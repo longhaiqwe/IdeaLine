@@ -1,0 +1,586 @@
+import SwiftUI
+import AppKit
+
+// MARK: - Design Tokens (Refactoring UI §1.5, §4.1, §5.2.1, §6.2.1)
+let ink = Color(red: 0.20, green: 0.23, blue: 0.20) // 主墨色 #333B33
+let inkSecondary = Color(red: 0.38, green: 0.42, blue: 0.38) // 次级墨色，严格满足 WCAG 4.5:1
+let inkMuted = Color(red: 0.55, green: 0.58, blue: 0.55) // 弱化修饰墨色
+let inkBorder = Color(red: 0.20, green: 0.23, blue: 0.20).opacity(0.10) // 边框墨色
+
+let paper = Color(red: 0.97, green: 0.96, blue: 0.92)
+let accent = Color(red: 0.69, green: 0.29, blue: 0.17)
+let papers: [Color] = [
+    Color(red: 1, green: 0.95, blue: 0.77),   // 0: 黄色
+    Color(red: 0.88, green: 0.94, blue: 0.86), // 1: 绿色
+    Color(red: 0.87, green: 0.93, blue: 0.97), // 2: 蓝色
+    Color(red: 0.98, green: 0.87, blue: 0.83)  // 3: 粉色
+]
+func noteColor(_ i: Int) -> Color { papers[max(0, min(i, papers.count - 1))] }
+
+enum AppTypeScale {
+    static let caption: CGFloat = 11
+    static let small: CGFloat = 12
+    static let lead: CGFloat = 13
+    static let body: CGFloat = 15
+    static let subhead: CGFloat = 18
+    static let title: CGFloat = 26
+    static let display: CGFloat = 34
+}
+
+let radiusCard: CGFloat = 4
+let radiusWindow: CGFloat = 14
+
+final class WritingTextView: NSTextView {
+    var submit: (() -> Void)?
+    var dismiss: (() -> Void)?
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if event.keyCode == 36 && event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command {
+            if hasMarkedText() { return super.performKeyEquivalent(with: event) }
+            submit?(); return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+    override func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 && !hasMarkedText() { dismiss?(); return }
+        super.keyDown(with: event)
+    }
+}
+struct WritingEditor: NSViewRepresentable {
+    @Binding var text: String
+    var submit: () -> Void
+    var dismiss: () -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NSScrollView {
+        let scroll = NSScrollView(); scroll.drawsBackground = false; scroll.hasVerticalScroller = true
+        let view = WritingTextView()
+        view.isRichText = false; view.isAutomaticQuoteSubstitutionEnabled = false
+        view.drawsBackground = false; view.font = NSFont.systemFont(ofSize: 20, weight: .regular)
+        view.textColor = NSColor(ink); view.textContainerInset = NSSize(width: 0, height: 8)
+        view.isVerticallyResizable = true; view.isHorizontallyResizable = false
+        view.autoresizingMask = [.width]; view.textContainer?.widthTracksTextView = true
+        view.textContainer?.containerSize = NSSize(width: 510, height: CGFloat.greatestFiniteMagnitude)
+        view.string = text; view.delegate = context.coordinator
+        view.submit = submit; view.dismiss = dismiss; scroll.documentView = view
+        DispatchQueue.main.async { view.window?.makeFirstResponder(view) }
+        return scroll
+    }
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        context.coordinator.parent = self
+        if let view = scroll.documentView as? WritingTextView {
+            if view.string != text && !view.hasMarkedText() { view.string = text }
+            view.submit = submit; view.dismiss = dismiss
+        }
+    }
+    class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: WritingEditor
+        init(_ parent: WritingEditor) { self.parent = parent }
+        func textDidChange(_ notification: Notification) {
+            if let view = notification.object as? NSTextView { parent.text = view.string }
+        }
+    }
+}
+
+struct ComposerView: View {
+    @ObservedObject var store: IdeaStore
+    @State var draft: Draft
+    var close: () -> Void
+    var saved: () -> Void
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            HStack(alignment: .firstTextBaseline) {
+                HStack(spacing: 7) {
+                    Image(systemName: "wind").foregroundStyle(accent)
+                    Text(draft.id == nil ? "新建选题" : "编辑选题")
+                        .font(.system(size: AppTypeScale.subhead, weight: .semibold, design: .serif))
+                }
+                Spacer()
+                Button(action: close) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(inkSecondary)
+                        .frame(width: 24, height: 24)
+                        .background(inkBorder, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .help("关闭并保留草稿 · Esc")
+            }
+            .padding(.bottom, 20)
+
+            // Editor
+            ZStack(alignment: .topLeading) {
+                if draft.text.isEmpty {
+                    Text("记录新选题或碎片灵感…")
+                        .foregroundStyle(inkMuted)
+                        .font(.system(size: 20))
+                        .padding(.top, 8)
+                        .padding(.leading, 5)
+                        .allowsHitTesting(false)
+                }
+                WritingEditor(text: $draft.text, submit: submit, dismiss: close)
+            }
+            .frame(maxHeight: .infinity)
+
+            if let error = store.error {
+                Text(error).font(.caption).foregroundStyle(.red).padding(.vertical, 4)
+            }
+
+            Rectangle().fill(inkBorder).frame(height: 1).padding(.vertical, 16)
+
+            // Bottom bar
+            HStack(alignment: .center, spacing: 10) {
+                ForEach(0..<papers.count, id: \.self) { i in
+                    Button { draft.color = i } label: {
+                        ZStack {
+                            Circle().fill(papers[i]).frame(width: 22, height: 22)
+                            if draft.color == i {
+                                Circle().stroke(ink, lineWidth: 2).frame(width: 22, height: 22)
+                                Circle().fill(ink).frame(width: 6, height: 6)
+                            } else {
+                                Circle().stroke(inkBorder, lineWidth: 1).frame(width: 22, height: 22)
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help(["黄色纸张", "绿色纸张", "蓝色纸张", "粉色纸张"][i])
+                }
+
+                Text("\(draft.text.count) 字")
+                    .font(.system(size: AppTypeScale.caption, design: .monospaced))
+                    .foregroundStyle(inkSecondary)
+                    .padding(.leading, 8)
+
+                Spacer()
+
+                Button(action: submit) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(draft.id == nil ? "保存至衣杆" : "保存修改").fontWeight(.semibold)
+                        Text("⌘↵").font(.system(size: AppTypeScale.caption, design: .monospaced)).opacity(0.7)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 9)
+                    .foregroundStyle(.white)
+                    .background(ink, in: RoundedRectangle(cornerRadius: radiusCard * 2))
+                }
+                .buttonStyle(.plain)
+                .disabled(draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+
+            HStack {
+                Text("按 ⌘↵ 保存至顶部衣杆，Esc 保留草稿退出")
+                    .font(.system(size: AppTypeScale.caption))
+                    .foregroundStyle(inkSecondary)
+                Spacer()
+            }
+            .padding(.top, 14)
+        }
+        .padding(28)
+        .background(paper)
+        .clipShape(RoundedRectangle(cornerRadius: radiusWindow))
+        .overlay(RoundedRectangle(cornerRadius: radiusWindow).stroke(inkBorder, lineWidth: 1))
+        .foregroundStyle(ink)
+        .onExitCommand(perform: close)
+        .onChange(of: draft) { _, value in store.draft(value) }
+    }
+    private func submit() { if store.hang(draft) { saved() } }
+}
+
+final class LineState: ObservableObject {
+    @Published var revealed = false
+    @Published var page = 0
+    @Published var capacity = 5
+    @Published var copied: UUID?
+    var hitRects: [CGRect] = []
+
+}
+struct HitRects: PreferenceKey {
+    static var defaultValue: [CGRect] = []
+    static func reduce(value: inout [CGRect], nextValue: () -> [CGRect]) { value += nextValue() }
+}
+extension View {
+    func interactive() -> some View {
+        background(GeometryReader { geo in Color.clear.preference(key: HitRects.self, value: [geo.frame(in: .named("line"))]) })
+    }
+}
+enum ClotheslineLayout {
+    static func destinationIndex(from index: Int, translation: CGSize, count: Int) -> Int {
+        guard count > 0, translation.width.isFinite,
+              abs(translation.width) > abs(translation.height) else { return index }
+        let position = CGFloat(index) + (translation.width / 208).rounded()
+        return Int(max(0, min(CGFloat(count - 1), position)))
+    }
+    static func noteTopInset(index: Int, count: Int, width: CGFloat) -> CGFloat {
+        // NSHostingView can lay out before its panel receives a screen frame.
+        guard width.isFinite, width > 0 else { return 4 }
+        let x = width / 2 + (CGFloat(index) - CGFloat(count - 1) / 2) * 208
+        let f = x / width
+        return 4 + 92 * f * (1 - f)
+    }
+}
+struct ClotheslineView: View {
+    @ObservedObject var store: IdeaStore
+    @ObservedObject var line: LineState
+    @GestureState(resetTransaction: Transaction(animation: .spring(response: 0.3, dampingFraction: 0.85)))
+    private var drag: NoteDrag?
+    private struct NoteDrag {
+        var id: UUID
+        var translation: CGSize
+    }
+    var edit: (Idea) -> Void
+    var compose: () -> Void
+    var library: () -> Void
+    var body: some View {
+        GeometryReader { geo in
+            let count = max(1, Int(ceil(Double(store.active.count) / Double(line.capacity))))
+            let page = min(line.page, count - 1)
+            let ideas = Array(store.active.dropFirst(page * line.capacity).prefix(line.capacity))
+            let sourceIndex = ideas.firstIndex { $0.id == drag?.id }
+            let targetIndex = sourceIndex.map {
+                ClotheslineLayout.destinationIndex(from: $0, translation: drag?.translation ?? .zero, count: ideas.count)
+            }
+            ZStack(alignment: .top) {
+                Path { p in
+                    p.move(to: CGPoint(x: -10, y: 12))
+                    p.addQuadCurve(to: CGPoint(x: geo.size.width + 10, y: 12), control: CGPoint(x: geo.size.width / 2, y: 58))
+                }.stroke(Color(red: 0.57, green: 0.51, blue: 0.40), lineWidth: 1.7).shadow(color: .black.opacity(0.3), radius: 1, y: 1).allowsHitTesting(false)
+                HStack(alignment: .top, spacing: 24) {
+                    ForEach(Array(ideas.enumerated()), id: \.element.id) { index, idea in
+                        HangingNote(idea: idea, copied: line.copied == idea.id, edit: { edit(idea) }, copy: {
+                            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(idea.text, forType: .string)
+                            line.copied = idea.id
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { line.copied = nil }
+                        }, archive: { store.archive(idea.id, true) })
+                        .highPriorityGesture(
+                            DragGesture(minimumDistance: 10, coordinateSpace: .global)
+                                .updating($drag) { value, state, transaction in
+                                    transaction.animation = nil
+                                    state = NoteDrag(id: idea.id, translation: value.translation)
+                                }
+                                .onEnded { value in
+                                    let target = ClotheslineLayout.destinationIndex(from: index, translation: value.translation, count: ideas.count)
+                                    if target != index {
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                            _ = store.moveActive(idea.id, to: page * line.capacity + target)
+                                        }
+                                    }
+                                },
+                            including: ideas.count > 1 ? .all : .subviews
+                        )
+                        .padding(.top, ClotheslineLayout.noteTopInset(index: index, count: ideas.count, width: geo.size.width))
+                        .offset(x: noteOffset(index: index, count: ideas.count, source: sourceIndex, target: targetIndex))
+                        .zIndex(drag?.id == idea.id ? 1 : 0)
+                        .animation(drag?.id == idea.id ? nil : .spring(response: 0.3, dampingFraction: 0.85), value: targetIndex)
+                        .help("点击编辑，左右拖动调整顺序")
+                    }
+                }
+                if ideas.isEmpty {
+                    Button(action: compose) {
+                        VStack(spacing: 10) {
+                            Image(systemName: "wind").font(.system(size: 26)).foregroundStyle(accent)
+                            Text("暂无挂起选题").font(.system(size: AppTypeScale.subhead, weight: .medium, design: .serif))
+                            Text("\(AppShortcut.newIdea.label)   新建选题").font(.system(size: AppTypeScale.caption, design: .monospaced)).foregroundStyle(inkSecondary)
+                        }
+                        .padding(24).background(paper, in: RoundedRectangle(cornerRadius: 12))
+                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(inkBorder, lineWidth: 1))
+                        .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 4)
+                    }.buttonStyle(.plain).foregroundStyle(ink).padding(.top, 55).interactive()
+                }
+                HStack(spacing: 12) {
+                    if !ideas.isEmpty {
+                        Button(action: compose) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "plus")
+                                Text("新建选题")
+                            }
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(ink, in: Capsule())
+                            .foregroundStyle(.white)
+                        }
+                        Divider().frame(height: 12)
+                    }
+                    if count > 1 {
+                        Button { line.page = max(0, page - 1) } label: { Image(systemName: "chevron.left") }.disabled(page == 0)
+                        Text("\(page + 1) / \(count)").monospacedDigit().font(.system(size: AppTypeScale.caption)).foregroundStyle(inkSecondary)
+                        Button { line.page = min(count - 1, page + 1) } label: { Image(systemName: "chevron.right") }.disabled(page == count - 1)
+                        Divider().frame(height: 12)
+                    }
+                    if ideas.count > 1 {
+                        Text("拖动便签排序")
+                            .font(.system(size: AppTypeScale.caption))
+                            .foregroundStyle(inkSecondary)
+                        Divider().frame(height: 12)
+                    }
+                    Button(action: library) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "tray.full")
+                            Text(ideas.isEmpty ? "全部选题" : "全部 \(store.active.count) 条")
+                        }
+                        .foregroundStyle(ink)
+                    }
+                }.buttonStyle(.plain).font(.system(size: AppTypeScale.small, weight: .medium)).padding(.horizontal, 14).padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .overlay(Capsule().stroke(inkBorder, lineWidth: 0.5))
+                    .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 3)
+                    .interactive().padding(.top, 228)
+                if let error = store.error {
+                    Text(error).font(.system(size: AppTypeScale.caption)).foregroundStyle(.red)
+                        .padding(4).background(paper, in: RoundedRectangle(cornerRadius: 4))
+                        .padding(.top, 264)
+                }
+            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .coordinateSpace(name: "line")
+                .onPreferenceChange(HitRects.self) { line.hitRects = $0 }
+                .offset(y: line.revealed ? 0 : -310)
+                .animation(.spring(response: 0.46, dampingFraction: 0.8), value: line.revealed)
+                .animation(.spring(response: 0.4, dampingFraction: 0.75), value: ideas.map(\.id))
+        }.preferredColorScheme(.light)
+    }
+
+    private func noteOffset(index: Int, count: Int, source: Int?, target: Int?) -> CGFloat {
+        guard let source, let target, let drag,
+              abs(drag.translation.width) > abs(drag.translation.height) else { return 0 }
+        if index == source {
+            return max(-CGFloat(source) * 208, min(CGFloat(count - 1 - source) * 208, drag.translation.width))
+        }
+        if source < target && index > source && index <= target { return -208 }
+        if source > target && index >= target && index < source { return 208 }
+        return 0
+    }
+}
+struct HangingNote: View {
+    let idea: Idea
+    var copied: Bool
+    var edit: () -> Void
+    var copy: () -> Void
+    var archive: () -> Void
+    @State private var hover = false
+    @State private var arrived = false
+    var body: some View {
+        VStack(spacing: -11) {
+            RoundedRectangle(cornerRadius: 3).fill(LinearGradient(colors: [Color(red: 0.66, green: 0.42, blue: 0.23), Color(red: 0.88, green: 0.70, blue: 0.45), Color(red: 0.66, green: 0.42, blue: 0.23)], startPoint: .leading, endPoint: .trailing))
+                .frame(width: 11, height: 29).overlay(Rectangle().fill(.black.opacity(0.25)).frame(width: 9, height: 2)).shadow(radius: 1, y: 1).zIndex(2)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(idea.createdAt, format: .dateTime.month(.twoDigits).day(.twoDigits).hour().minute())
+                    Spacer()
+                }
+                .font(.system(size: AppTypeScale.caption, weight: .medium, design: .monospaced))
+                .foregroundStyle(inkSecondary)
+
+                Text(idea.text)
+                    .font(.system(size: AppTypeScale.body, weight: .medium, design: .serif))
+                    .lineSpacing(4)
+                    .lineLimit(5)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+                HStack(alignment: .center) {
+                    Text(copied ? "已复制 ✓" : "点击编辑")
+                        .font(.system(size: AppTypeScale.caption))
+                        .foregroundStyle(copied ? accent : inkSecondary)
+                    Spacer()
+                    Button(action: copy) {
+                        Image(systemName: "doc.on.doc")
+                            .font(.system(size: AppTypeScale.caption))
+                            .foregroundStyle(inkSecondary)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("复制选题")
+
+                    Button(action: archive) {
+                        Image(systemName: "archivebox")
+                            .font(.system(size: AppTypeScale.caption))
+                            .foregroundStyle(inkSecondary)
+                            .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("收纳选题，可在全部列表中找回")
+                }
+            }
+            .padding(14)
+            .frame(width: 184, height: 171)
+            .background(noteColor(idea.color), in: RoundedRectangle(cornerRadius: radiusCard))
+            .overlay(RoundedRectangle(cornerRadius: radiusCard).stroke(inkBorder, lineWidth: 1))
+            .shadow(color: .black.opacity(0.08), radius: 2, x: 0, y: 1) // 接触阴影
+            .shadow(color: .black.opacity(hover ? 0.20 : 0.12), radius: hover ? 12 : 5, x: 0, y: hover ? 6 : 3) // 扩散环境光阴影
+            .contentShape(Rectangle())
+            .onTapGesture(perform: edit)
+            .interactive()
+            .contextMenu { Button("编辑", action: edit); Button("复制", action: copy); Button("收纳", action: archive) }
+        }.foregroundStyle(ink).rotationEffect(.degrees(arrived ? (hover ? 0 : tilt) : -12), anchor: .top)
+            .scaleEffect(hover ? 1.035 : 1, anchor: .top).onHover { hover = $0 }
+            .animation(.spring(response: 0.5, dampingFraction: 0.45), value: hover)
+            .onAppear { withAnimation(.spring(response: 0.7, dampingFraction: 0.36)) { arrived = true } }
+    }
+    private var tilt: Double { Double(idea.id.uuid.0 % 7) - 3 }
+}
+
+struct LibraryNoteCard: View {
+    let idea: Idea
+    var edit: () -> Void
+    var toggleArchive: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(idea.createdAt, format: .dateTime.year().month().day())
+                    .font(.system(size: AppTypeScale.caption, design: .monospaced))
+                    .foregroundStyle(inkSecondary)
+                Spacer()
+                Button(action: toggleArchive) {
+                    Text(idea.archived ? "恢复挂起" : "收纳")
+                        .font(.system(size: AppTypeScale.caption, weight: .medium))
+                        .foregroundStyle(accent)
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
+                }
+                .buttonStyle(.plain)
+                .help(idea.archived ? "恢复挂起至顶部衣杆" : "收纳至归档")
+            }
+
+            Text(idea.text)
+                .font(.system(size: AppTypeScale.body, design: .serif))
+                .lineSpacing(5)
+                .lineLimit(6)
+                .frame(maxWidth: .infinity, minHeight: 96, alignment: .topLeading)
+
+            HStack {
+                Text("点击编辑")
+                    .font(.system(size: AppTypeScale.caption))
+                    .foregroundStyle(inkSecondary)
+                    .opacity(hover ? 1 : 0.6)
+                Spacer()
+                Image(systemName: "pencil")
+                    .font(.system(size: AppTypeScale.caption))
+                    .foregroundStyle(inkSecondary)
+                    .opacity(hover ? 1 : 0)
+            }
+        }
+        .padding(18)
+        .background(noteColor(idea.color), in: RoundedRectangle(cornerRadius: radiusCard))
+        .overlay(RoundedRectangle(cornerRadius: radiusCard).stroke(inkBorder, lineWidth: 1))
+        .shadow(color: .black.opacity(hover ? 0.12 : 0.04), radius: hover ? 6 : 2, x: 0, y: hover ? 3 : 1)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: edit)
+        .onHover { hover = $0 }
+        .animation(.easeInOut(duration: 0.15), value: hover)
+    }
+}
+
+struct LibraryView: View {
+    @ObservedObject var store: IdeaStore
+    var compose: () -> Void
+    var edit: (Idea) -> Void
+    var export: () -> Void
+    @State private var query = ""
+    @State private var archived = false
+    private var ideas: [Idea] { store.state.ideas.filter { $0.archived == archived && (query.isEmpty || $0.text.localizedCaseInsensitiveContains(query)) } }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            // Header
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("IDEA LINE  /  X")
+                        .font(.system(size: AppTypeScale.caption, weight: .semibold, design: .monospaced))
+                        .tracking(3)
+                        .foregroundStyle(accent)
+                    Text("灵感晾台")
+                        .font(.system(size: AppTypeScale.display, weight: .medium, design: .serif))
+                    Text(archived ? "已收纳选题列表与归档管理。" : "全部选题列表与归档管理。")
+                        .font(.system(size: AppTypeScale.small))
+                        .foregroundStyle(inkSecondary)
+                }
+                Spacer()
+                Button(action: compose) {
+                    Label("新建选题  \(AppShortcut.newIdea.label)", systemImage: "plus")
+                        .font(.system(size: AppTypeScale.small, weight: .semibold))
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                        .background(ink, in: RoundedRectangle(cornerRadius: radiusCard * 2))
+                        .foregroundStyle(.white)
+                }
+                .buttonStyle(.plain)
+                .keyboardShortcut("n", modifiers: [.control, .option])
+            }
+
+            // Tabs & Search Bar
+            HStack(spacing: 16) {
+                Picker("分类", selection: $archived) {
+                    Text("衣杆上 · \(store.active.count)").tag(false)
+                    Text("已收纳 · \(store.state.ideas.count - store.active.count)").tag(true)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 230)
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: AppTypeScale.caption))
+                        .foregroundStyle(inkSecondary)
+                    TextField(archived ? "搜索已收纳…" : "搜索选题…", text: $query)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: AppTypeScale.small))
+                        .frame(width: 150)
+                    if !query.isEmpty {
+                        Button { query = "" } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: AppTypeScale.caption))
+                                .foregroundStyle(inkMuted)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(Color.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(inkBorder, lineWidth: 1))
+            }
+
+            // Card Grid or Empty State
+            ScrollView {
+                if ideas.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: query.isEmpty ? "wind" : "magnifyingglass")
+                            .font(.system(size: 32))
+                            .foregroundStyle(accent.opacity(0.7))
+                        Text(query.isEmpty ? (archived ? "暂无已收纳选题" : "暂无挂起选题") : "未找到匹配选题")
+                            .font(.system(size: AppTypeScale.subhead, weight: .medium, design: .serif))
+                        Text(query.isEmpty ? (archived ? "在选题卡片上点击「收纳」可将选题移至此处。" : "按 \(AppShortcut.newIdea.label) 新建选题，按 ⌘↵ 保存至衣杆。") : "可更换关键词重新搜索。")
+                            .font(.system(size: AppTypeScale.caption))
+                            .foregroundStyle(inkSecondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 80)
+                } else {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 16)], spacing: 16) {
+                        ForEach(ideas) { idea in
+                            LibraryNoteCard(idea: idea, edit: { edit(idea) }, toggleArchive: {
+                                store.archive(idea.id, !idea.archived)
+                            })
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+            }
+
+            if let error = store.error {
+                Text(error).foregroundStyle(.red).font(.caption)
+            }
+
+            // Footer
+            HStack {
+                Text("本地存储 · 自动保存")
+                Spacer()
+                Button("导出 Markdown", action: export).buttonStyle(.plain).foregroundStyle(accent)
+            }
+            .font(.system(size: AppTypeScale.caption))
+            .foregroundStyle(inkSecondary)
+        }
+        .padding(32)
+        .background(paper)
+        .foregroundStyle(ink)
+        .frame(minWidth: 680, minHeight: 520)
+        .preferredColorScheme(.light)
+    }
+}
