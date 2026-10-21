@@ -1,9 +1,29 @@
-<?xml version="1.0" encoding="utf-8"?>
-<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
-  <channel>
-    <title>灵感晾台更新</title>
-    <link>https://github.com/longhaiqwe/IdeaLine</link>
-    <description>灵感晾台正式发行版更新清单。</description>
-    <language>zh-cn</language>
-  </channel>
+<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>灵感晾台更新</title>
+        <link>https://github.com/longhaiqwe/IdeaLine</link>
+        <description>灵感晾台正式发行版更新清单。</description>
+        <language>zh-cn</language>
+        <item>
+            <title>1.1.0</title>
+            <pubDate>Wed, 21 Oct 2026 09:01:44 +0800</pubDate>
+            <sparkle:version>2</sparkle:version>
+            <sparkle:shortVersionString>1.1.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description sparkle:format="markdown"><![CDATA[# 灵感晾台 1.1.0
+
+首次正式发行。支持 macOS 14+、Apple Silicon 和 Intel；安装包使用 Developer ID 签名并通过 Apple 公证。下载 ZIP 后解压，将「灵感晾台.app」拖入「应用程序」打开。
+
+- 新增「关于灵感晾台」，显示当前版本和构建号。
+- 新增手动检查更新、自动检查与自动下载安装开关。
+- 后台发现新版时，在菜单栏显示更新标记，点击可查看说明并安装。
+- 关闭自动检查后，自动下载安装选项禁用；手动检查仍可使用。
+- 未配置更新服务的开发版本会明确提示，不发起更新请求。
+
+选题、草稿与收纳记录仍保存在本机；更新服务不会上传这些内容。
+]]></description>
+            <enclosure url="https://github.com/longhaiqwe/IdeaLine/releases/download/v1.1.0/IdeaLine-v1.1.0-macOS-universal.zip" length="2049311" type="application/octet-stream" sparkle:edSignature="As19zGGJz4emNujzJ+OgZzeXUpS0QZjabvWyL06xrv4q6SO2iwndXsBOcqRqQJKpBWnIiTgElhFsLjiAxlVOAA=="/>
+        </item>
+    </channel>
 </rss>
