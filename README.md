@@ -2,7 +2,21 @@
 
 原生 macOS X 选题记录工具。使用快捷键呼出书写窗口，按 Cmd+Enter 将便签挂靠在屏幕顶部的衣杆上。
 
+![灵感晾台顶部衣杆：彩色便签悬挂展示选题，可拖动排序、复制和收纳](docs/images/clothesline.png)
+
+*演示图由应用真实界面组件渲染，内容均为示例选题，背景为展示用。*
+
 项目仓库：[longhaiqwe/IdeaLine](https://github.com/longhaiqwe/IdeaLine)。[下载正式安装包](https://github.com/longhaiqwe/IdeaLine/releases/latest)：支持 Apple Silicon 与 Intel，要求 macOS 14 或更新版本。
+
+## 界面预览
+
+**随手记录**：按 `⌃⌥N` 打开书写窗口，选择便签颜色，按 `⌘↵` 保存至衣杆；按 Esc 可保留草稿并收起。
+
+![快捷记录窗口：输入选题、选择纸张颜色并保存至衣杆](docs/images/composer.png)
+
+**集中整理**：在「全部选题」中搜索、继续编辑和收纳选题，也可以恢复已收纳内容或导出 Markdown。
+
+![全部选题页面：彩色卡片网格、搜索、衣杆与收纳分类，以及 Markdown 导出](docs/images/library.png)
 
 ## 使用
 
@@ -49,6 +63,8 @@ open build/灵感晾台.app
 ```
 
 构建产物使用本机架构、本地 ad-hoc 签名，适合这台 Mac 使用；没有 Apple 公证。构建脚本生成独立图标及 .app 包。
+
+README 配图可在 macOS 上运行 `scripts/render-readme.sh` 重新生成，输出到 `docs/images/`。脚本直接使用现有 SwiftUI 组件和临时示例数据，不读取个人选题，不截图桌面，也不修改正在运行的应用。
 
 ## 应用更新
 
