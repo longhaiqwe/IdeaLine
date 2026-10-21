@@ -2,11 +2,11 @@
 
 原生 macOS X 选题记录工具。使用快捷键呼出书写窗口，按 Cmd+Enter 将便签挂靠在屏幕顶部的衣杆上。
 
-项目仓库：[longhaiqwe/IdeaLine](https://github.com/longhaiqwe/IdeaLine)。当前提供源码，尚未发布正式安装包，可按照下面的开发步骤自行构建。
+项目仓库：[longhaiqwe/IdeaLine](https://github.com/longhaiqwe/IdeaLine)。[下载正式安装包](https://github.com/longhaiqwe/IdeaLine/releases/latest)：支持 Apple Silicon 与 Intel，要求 macOS 14 或更新版本。
 
 ## 使用
 
-打开 `build/灵感晾台.app`（也可以复制到「应用程序」），菜单栏会出现微风图标。
+下载 Release 中的 ZIP，解压后将「灵感晾台.app」拖入「应用程序」并打开，菜单栏会出现微风图标。正式安装包使用 Developer ID 签名并通过 Apple 公证。自行构建时打开 `build/灵感晾台.app`。
 
 | 操作 | 快捷键 / 手势 |
 | --- | --- |
@@ -54,7 +54,7 @@ open build/灵感晾台.app
 
 菜单栏提供「关于灵感晾台」「检查更新…」「自动检查更新」和「自动下载并安装更新」。后台发现新版时显示菜单栏提醒，点击后查看更新说明并安装。自动检查默认每天一次，自动下载安装默认关闭；关闭自动检查后，自动下载安装选项禁用。
 
-`release.json` 已配置本仓库的更新清单地址和独立的 Sparkle 签名公钥。当前 `appcast.xml` 尚无发行条目，检查更新不会提供安装包；发布正式签名安装包并更新清单后，应用即可发现新版。旧的未配置开发包需重新构建才会包含此配置。版本号、打包、公证和更新清单流程见 [发布文档](docs/releasing.md)。
+`release.json` 已配置本仓库的更新清单地址和独立的 Sparkle 签名公钥。正式发行版通过 `appcast.xml` 获取新版、验证安装包签名并安装。旧的未配置开发包需要先手动安装一次正式版本。版本号、打包、公证和更新清单流程见 [发布文档](docs/releasing.md)。
 
 - `Store.swift`：JSON 持久化、草稿、编辑与收纳。
 - `Views.swift`：衣杆、纸条、书写窗口和全部选题。

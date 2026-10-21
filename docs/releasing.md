@@ -16,7 +16,9 @@ scripts/build-app.sh
 
 ## 首次配置
 
-本仓库已配置更新源 `https://raw.githubusercontent.com/longhaiqwe/IdeaLine/main/appcast.xml` 和 `idealine` 钥匙串账户对应的公钥。私钥保存在维护者的 Mac 钥匙串中，不在 GitHub 上。当前清单为空，等待首次正式发行；新维护机器需要迁移已有私钥，不能直接生成新密钥覆盖发布身份。以下步骤供初始设置或独立 fork 参考。
+本仓库已配置更新源 `https://raw.githubusercontent.com/longhaiqwe/IdeaLine/main/appcast.xml` 和 `idealine` 钥匙串账户对应的公钥。私钥保存在维护者的 Mac 钥匙串中，不在 GitHub 上。新维护机器需要迁移已有私钥，不能直接生成新密钥覆盖发布身份。以下步骤供初始设置或独立 fork 参考。
+
+当前正式签名为 `Developer ID Application: hai long (5RFJK73RSL)`，Team ID 为 `5RFJK73RSL`；本机公证 profile 为 `shiyinfm-notary`。后续发布与本机升级必须保持此签名身份，不能用 ad-hoc 或 Apple Development 包覆盖正式版。替换前验证完整签名、公证、Bundle ID，并保存旧版和数据备份；安装目录优先沿用现有位置。
 
 1. 确定本应用自己的更新源，例如 GitHub 仓库中的 `appcast.xml`，不要使用 PinSnip 的更新源。
 2. 生成此应用的 Sparkle 密钥；私钥留在钥匙串，不写入仓库：
