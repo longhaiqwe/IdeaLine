@@ -38,7 +38,7 @@ scripts/build-app.sh
 ```sh
 export IDEALINE_CODE_SIGN_IDENTITY='Developer ID Application: <证书名称> (<Team ID>)'
 export IDEALINE_NOTARY_PROFILE='<notarytool profile>'
-export IDEALINE_DOWNLOAD_URL_PREFIX='https://github.com/longhaiqwe/IdeaLine/releases/download/v1.1.0/'
+export IDEALINE_DOWNLOAD_URL_PREFIX='https://github.com/longhaiqwe/IdeaLine/releases/download/v1.2.0/'
 scripts/prepare-release.sh
 ```
 
@@ -47,6 +47,8 @@ scripts/prepare-release.sh
 产物在 `build/Release/`：应用、`IdeaLine-v<version>-macOS-universal.zip`、`appcast.xml`。此脚本**不上传、不发布、不替换用户正在使用的应用**。
 
 发布顺序：先上传 ZIP 到 `IDEALINE_DOWNLOAD_URL_PREFIX` 对应地址，确认文件可下载，再发布生成的清单至 `feed_url`，将同一清单保存为仓库根目录的 `appcast.xml`。首次带更新能力的版本也必须发布有效清单。签名后不要修改 ZIP。
+
+提交本次源码、`release.json` 和发布说明后，为该提交创建 `v<version>` 标签并推送到 GitHub。Release 必须指向此标签，并附上应用 ZIP 和 `SHA256SUMS.txt`；GitHub 自动生成的源码包不能替代应用安装包。上传后重新下载，核对 SHA-256，解压并执行 `codesign --verify --deep --strict`、`xcrun stapler validate` 和 `spctl --assess --type execute -vv`。检查应用版本、构建号以及 `arm64` / `x86_64` 架构，再发布更新清单。
 
 ## 验收
 
