@@ -46,6 +46,7 @@ struct ReadmeRenderer {
         try JSONEncoder().encode(SavedState(ideas: ideas, draft: Draft())).write(to: store.url)
         let demo = IdeaStore(url: store.url)
         let line = LineState()
+        line.position = .top
         line.capacity = 5
         line.revealed = true
 
@@ -69,6 +70,18 @@ struct ReadmeRenderer {
             }
         }
         try render(hero, size: NSSize(width: 1200, height: 560), to: output.appendingPathComponent("clothesline.png"))
+
+        for position in LinePosition.allCases {
+            let frame = position.panelFrame(in: CGRect(x: 0, y: 0, width: 1200, height: 900))
+            let preview = LineState()
+            preview.position = position
+            preview.capacity = position.capacity(in: frame)
+            preview.revealed = true
+            let view = DemoCanvas {
+                ClotheslineView(store: demo, line: preview, edit: { _ in }, compose: {}, library: {})
+            }
+            try render(view, size: frame.size, to: output.appendingPathComponent("position-\(position.rawValue).png"))
+        }
 
         let composer = DemoCanvas {
             ComposerView(store: demo, draft: Draft(text: "一个小观察：\n\n很多好想法，不是想出来的，\n而是在散步、聊天和发呆时冒出来的。\n\n先记下来，再慢慢展开。", color: 0), close: {}, saved: {})

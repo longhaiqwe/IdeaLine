@@ -32,12 +32,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private let updates = UpdateController()
     private var status: NSStatusItem!
     private var linePanel: LinePanel!
+    private var lineScreen: NSScreen?
+    private var positionItems: [NSMenuItem] = []
     private var composer: FloatingPanel?
     private var library: NSWindow?
     private var shortcuts: HotKeys!
     private var timer: Timer?
     private var peekUntil = Date.distantPast
-    private var enteredTop: Date?
+    private var enteredEdge: Date?
     private var awaySince: Date?
     private var menuOpen = false
     private var suppressed = false
@@ -99,29 +101,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var pointerScreen: NSScreen? { NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main }
     private func placeLine() {
         guard let screen = pointerScreen else { return }
+        lineScreen = screen
         let frame = screen.visibleFrame
-        linePanel.setFrame(NSRect(x: frame.minX, y: frame.maxY - 286, width: frame.width, height: 286), display: true)
-        line.capacity = max(1, Int((frame.width - 70) / 208))
+        linePanel.setFrame(line.position.panelFrame(in: frame), display: true)
+        line.capacity = line.position.capacity(in: frame)
     }
     private func reveal(seconds: Double = 3) {
         placeLine(); linePanel.orderFrontRegardless(); line.revealed = true
         peekUntil = Date().addingTimeInterval(seconds); awaySince = nil
     }
-    private func hideLine() { line.revealed = false; linePanel.ignoresMouseEvents = true; enteredTop = nil; awaySince = nil }
+    private func hideLine() { line.revealed = false; linePanel.ignoresMouseEvents = true; enteredEdge = nil; awaySince = nil }
     @objc private func toggleLine() { if line.revealed { hideLine() } else { reveal(seconds: 6) } }
     private func tick() {
         guard !menuOpen, composer?.isVisible != true else { return }
         let mouse = NSEvent.mouseLocation
         let now = Date()
         guard let screen = pointerScreen else { return }
-        // A narrow top-edge gesture avoids opening while using ordinary menus.
-        let atTop = mouse.y >= screen.frame.maxY - 3
-        if !atTop { suppressed = false }
+        // Only the selected screen edge triggers a peek.
+        let atEdge = line.position.isAtEdge(mouse, of: screen.frame)
+        if !atEdge { suppressed = false }
         if !line.revealed {
-            if atTop && !suppressed {
-                if enteredTop == nil { enteredTop = now }
-                if now.timeIntervalSince(enteredTop!) > 0.3 { reveal(seconds: 1) }
-            } else { enteredTop = nil }
+            if atEdge && !suppressed {
+                if enteredEdge == nil { enteredEdge = now }
+                if now.timeIntervalSince(enteredEdge!) > 0.3 { reveal(seconds: 1) }
+            } else { enteredEdge = nil }
             return
         }
         // Keep a mouse gesture captured even when it crosses transparent gaps
@@ -132,12 +135,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
         let local = NSPoint(x: mouse.x - linePanel.frame.minX, y: linePanel.frame.maxY - mouse.y)
         linePanel.ignoresMouseEvents = !line.hitRects.contains { $0.insetBy(dx: -8, dy: -8).contains(local) }
-        let zone = NSRect(x: linePanel.frame.minX, y: linePanel.frame.minY, width: linePanel.frame.width, height: screen.frame.maxY - linePanel.frame.minY)
+        let zone = line.position.interactionZone(panel: linePanel.frame, screen: (lineScreen ?? screen).frame)
         if zone.contains(mouse) || now < peekUntil { awaySince = nil }
         else {
             if awaySince == nil { awaySince = now }
             if now.timeIntervalSince(awaySince!) > 0.55 { hideLine() }
         }
+    }
+    @objc private func changeLinePosition(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String,
+              let position = LinePosition(rawValue: value) else { return }
+        hideLine()
+        line.position = position
+        UserDefaults.standard.set(position.rawValue, forKey: LinePosition.defaultsKey)
+        line.page = 0
+        line.hitRects = []
+        positionItems.forEach { $0.state = ($0.representedObject as? String) == value ? .on : .off }
+        reveal(seconds: 6)
     }
     @objc func newIdea() { openEditor() }
     func openEditor(_ idea: Idea? = nil) {
@@ -213,6 +227,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         item("新建选题", #selector(newIdea), .newIdea)
         item("展开 / 收起衣杆", #selector(toggleLine), .toggleLine)
         item("全部选题", #selector(openLibrary))
+        let positionMenu = NSMenu(title: "晾台位置")
+        for position in LinePosition.allCases {
+            let option = NSMenuItem(title: position.title, action: #selector(changeLinePosition(_:)), keyEquivalent: "")
+            option.target = self
+            option.representedObject = position.rawValue
+            option.state = line.position == position ? .on : .off
+            positionMenu.addItem(option)
+            positionItems.append(option)
+        }
+        let positionItem = NSMenuItem(title: "晾台位置", action: nil, keyEquivalent: "")
+        positionItem.submenu = positionMenu
+        menu.addItem(positionItem)
         menu.addItem(.separator())
         item("导出 Markdown…", #selector(exportMarkdown)); item("打开数据文件夹", #selector(showData))
         menu.addItem(.separator())

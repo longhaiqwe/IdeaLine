@@ -185,6 +185,7 @@ struct ComposerView: View {
 }
 
 final class LineState: ObservableObject {
+    @Published var position: LinePosition = .saved()
     @Published var revealed = false
     @Published var page = 0
     @Published var capacity = 5
@@ -202,11 +203,13 @@ extension View {
     }
 }
 enum ClotheslineLayout {
-    static func destinationIndex(from index: Int, translation: CGSize, count: Int) -> Int {
-        guard count > 0, translation.width.isFinite,
-              abs(translation.width) > abs(translation.height) else { return index }
-        let position = CGFloat(index) + (translation.width / 208).rounded()
-        return Int(max(0, min(CGFloat(count - 1), position)))
+    static func destinationIndex(from index: Int, translation: CGSize, count: Int, position: LinePosition = .top) -> Int {
+        let distance = position.isVertical ? translation.height : translation.width
+        let crossDistance = position.isVertical ? translation.width : translation.height
+        guard count > 0, distance.isFinite, crossDistance.isFinite,
+              abs(distance) > abs(crossDistance) else { return index }
+        let slot = CGFloat(index) + (distance / position.noteStride).rounded()
+        return Int(max(0, min(CGFloat(count - 1), slot)))
     }
     static func noteTopInset(index: Int, count: Int, width: CGFloat) -> CGFloat {
         // NSHostingView can lay out before its panel receives a screen frame.
@@ -233,118 +236,181 @@ struct ClotheslineView: View {
             let count = max(1, Int(ceil(Double(store.active.count) / Double(line.capacity))))
             let page = min(line.page, count - 1)
             let ideas = Array(store.active.dropFirst(page * line.capacity).prefix(line.capacity))
-            let sourceIndex = ideas.firstIndex { $0.id == drag?.id }
-            let targetIndex = sourceIndex.map {
-                ClotheslineLayout.destinationIndex(from: $0, translation: drag?.translation ?? .zero, count: ideas.count)
-            }
-            ZStack(alignment: .top) {
-                Path { p in
-                    p.move(to: CGPoint(x: -10, y: 12))
-                    p.addQuadCurve(to: CGPoint(x: geo.size.width + 10, y: 12), control: CGPoint(x: geo.size.width / 2, y: 58))
-                }.stroke(Color(red: 0.57, green: 0.51, blue: 0.40), lineWidth: 1.7).shadow(color: .black.opacity(0.3), radius: 1, y: 1).allowsHitTesting(false)
-                HStack(alignment: .top, spacing: 24) {
-                    ForEach(Array(ideas.enumerated()), id: \.element.id) { index, idea in
-                        HangingNote(idea: idea, copied: line.copied == idea.id, edit: { edit(idea) }, copy: {
-                            NSPasteboard.general.clearContents(); NSPasteboard.general.setString(idea.text, forType: .string)
-                            line.copied = idea.id
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { line.copied = nil }
-                        }, archive: { store.archive(idea.id, true) })
-                        .highPriorityGesture(
-                            DragGesture(minimumDistance: 10, coordinateSpace: .global)
-                                .updating($drag) { value, state, transaction in
-                                    transaction.animation = nil
-                                    state = NoteDrag(id: idea.id, translation: value.translation)
+            Group {
+                if line.position.isVertical {
+                    VStack(spacing: 8) {
+                        ScrollView(.vertical) {
+                            ZStack(alignment: .top) {
+                                sideRope(count: store.active.count)
+                                if store.active.isEmpty {
+                                    emptyState.padding(.top, 55)
+                                } else {
+                                    noteStack(ideas: store.active, page: 0, width: geo.size.width)
+                                        .padding(.bottom, 12)
                                 }
-                                .onEnded { value in
-                                    let target = ClotheslineLayout.destinationIndex(from: index, translation: value.translation, count: ideas.count)
-                                    if target != index {
-                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                                            _ = store.moveActive(idea.id, to: page * line.capacity + target)
-                                        }
-                                    }
-                                },
-                            including: ideas.count > 1 ? .all : .subviews
-                        )
-                        .padding(.top, ClotheslineLayout.noteTopInset(index: index, count: ideas.count, width: geo.size.width))
-                        .offset(x: noteOffset(index: index, count: ideas.count, source: sourceIndex, target: targetIndex))
-                        .zIndex(drag?.id == idea.id ? 1 : 0)
-                        .animation(drag?.id == idea.id ? nil : .spring(response: 0.3, dampingFraction: 0.85), value: targetIndex)
-                        .help("点击编辑，左右拖动调整顺序")
-                    }
-                }
-                if ideas.isEmpty {
-                    Button(action: compose) {
-                        VStack(spacing: 10) {
-                            Image(systemName: "wind").font(.system(size: 26)).foregroundStyle(accent)
-                            Text("暂无挂起选题").font(.system(size: AppTypeScale.subhead, weight: .medium, design: .serif))
-                            Text("\(AppShortcut.newIdea.label)   新建选题").font(.system(size: AppTypeScale.caption, design: .monospaced)).foregroundStyle(inkSecondary)
+                            }.frame(maxWidth: .infinity)
                         }
-                        .padding(24).background(paper, in: RoundedRectangle(cornerRadius: 12))
-                        .overlay(RoundedRectangle(cornerRadius: 12).stroke(inkBorder, lineWidth: 1))
-                        .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 4)
-                    }.buttonStyle(.plain).foregroundStyle(ink).padding(.top, 55).interactive()
-                }
-                HStack(spacing: 12) {
-                    if !ideas.isEmpty {
-                        Button(action: compose) {
-                            HStack(spacing: 5) {
-                                Image(systemName: "plus")
-                                Text("新建选题")
-                            }
-                            .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(ink, in: Capsule())
-                            .foregroundStyle(.white)
+                        .scrollIndicators(.never)
+                        .interactive()
+                        .help("滚动查看更多便签；上下拖动便签调整顺序")
+                        toolbar(page: 0, count: 1, isEmpty: store.active.isEmpty)
+                        if let error = store.error {
+                            Text(error).font(.system(size: AppTypeScale.caption)).foregroundStyle(.red)
                         }
-                        Divider().frame(height: 12)
-                    }
-                    if count > 1 {
-                        Button { line.page = max(0, page - 1) } label: { Image(systemName: "chevron.left") }.disabled(page == 0)
-                        Text("\(page + 1) / \(count)").monospacedDigit().font(.system(size: AppTypeScale.caption)).foregroundStyle(inkSecondary)
-                        Button { line.page = min(count - 1, page + 1) } label: { Image(systemName: "chevron.right") }.disabled(page == count - 1)
-                        Divider().frame(height: 12)
-                    }
-                    if ideas.count > 1 {
-                        Text("拖动便签排序")
-                            .font(.system(size: AppTypeScale.caption))
-                            .foregroundStyle(inkSecondary)
-                        Divider().frame(height: 12)
-                    }
-                    Button(action: library) {
-                        HStack(spacing: 5) {
-                            Image(systemName: "tray.full")
-                            Text(ideas.isEmpty ? "全部选题" : "全部 \(store.active.count) 条")
+                    }.padding(.bottom, 12)
+                } else {
+                    ZStack(alignment: .top) {
+                        Path { p in
+                            p.move(to: CGPoint(x: -10, y: 12))
+                            p.addQuadCurve(to: CGPoint(x: geo.size.width + 10, y: 12), control: CGPoint(x: geo.size.width / 2, y: 58))
+                        }.stroke(Color(red: 0.57, green: 0.51, blue: 0.40), lineWidth: 1.7).shadow(color: .black.opacity(0.3), radius: 1, y: 1).allowsHitTesting(false)
+                        noteStack(ideas: ideas, page: page, width: geo.size.width)
+                        if ideas.isEmpty { emptyState.padding(.top, 55) }
+                        toolbar(page: page, count: count, isEmpty: ideas.isEmpty)
+                            .padding(.top, 228)
+                        if let error = store.error {
+                            Text(error).font(.system(size: AppTypeScale.caption)).foregroundStyle(.red)
+                                .padding(4).background(paper, in: RoundedRectangle(cornerRadius: 4))
+                                .padding(.top, 264)
                         }
-                        .foregroundStyle(ink)
-                    }
-                }.buttonStyle(.plain).font(.system(size: AppTypeScale.small, weight: .medium)).padding(.horizontal, 14).padding(.vertical, 8)
-                    .background(.regularMaterial, in: Capsule())
-                    .overlay(Capsule().stroke(inkBorder, lineWidth: 0.5))
-                    .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 3)
-                    .interactive().padding(.top, 228)
-                if let error = store.error {
-                    Text(error).font(.system(size: AppTypeScale.caption)).foregroundStyle(.red)
-                        .padding(4).background(paper, in: RoundedRectangle(cornerRadius: 4))
-                        .padding(.top, 264)
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            }
                 .coordinateSpace(name: "line")
                 .onPreferenceChange(HitRects.self) { line.hitRects = $0 }
-                .offset(y: line.revealed ? 0 : -310)
+                .offset(line.revealed ? .zero : line.position.hiddenOffset)
                 .animation(.spring(response: 0.46, dampingFraction: 0.8), value: line.revealed)
                 .animation(.spring(response: 0.4, dampingFraction: 0.75), value: ideas.map(\.id))
         }.preferredColorScheme(.light)
     }
 
-    private func noteOffset(index: Int, count: Int, source: Int?, target: Int?) -> CGFloat {
-        guard let source, let target, let drag,
-              abs(drag.translation.width) > abs(drag.translation.height) else { return 0 }
-        if index == source {
-            return max(-CGFloat(source) * 208, min(CGFloat(count - 1 - source) * 208, drag.translation.width))
+    private var emptyState: some View {
+        Button(action: compose) {
+            VStack(spacing: 10) {
+                Image(systemName: "wind").font(.system(size: 26)).foregroundStyle(accent)
+                Text("暂无挂起选题").font(.system(size: AppTypeScale.subhead, weight: .medium, design: .serif))
+                Text("\(AppShortcut.newIdea.label)   新建选题").font(.system(size: AppTypeScale.caption, design: .monospaced)).foregroundStyle(inkSecondary)
+            }
+            .padding(24).background(paper, in: RoundedRectangle(cornerRadius: 12))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(inkBorder, lineWidth: 1))
+            .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 4)
+        }.buttonStyle(.plain).foregroundStyle(ink).interactive()
+    }
+
+    private func sideRope(count: Int) -> some View {
+        GeometryReader { geo in
+            Path { path in
+                let x: CGFloat = line.position == .left ? 28 : geo.size.width - 28
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: geo.size.height))
+                for index in 0..<count {
+                    let y = 34 + CGFloat(index) * line.position.noteStride
+                    path.move(to: CGPoint(x: x, y: y))
+                    path.addLine(to: CGPoint(x: geo.size.width / 2, y: y))
+                }
+            }.stroke(Color(red: 0.57, green: 0.51, blue: 0.40), lineWidth: 1.7)
+                .shadow(color: .black.opacity(0.3), radius: 1, y: 1)
+        }.allowsHitTesting(false)
+    }
+
+    private func noteStack(ideas: [Idea], page: Int, width: CGFloat) -> some View {
+        let sourceIndex = ideas.firstIndex { $0.id == drag?.id }
+        let targetIndex = sourceIndex.map {
+            ClotheslineLayout.destinationIndex(from: $0, translation: drag?.translation ?? .zero, count: ideas.count, position: line.position)
         }
-        if source < target && index > source && index <= target { return -208 }
-        if source > target && index >= target && index < source { return 208 }
+        let layout = line.position.isVertical
+            ? AnyLayout(VStackLayout(spacing: 24))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 24))
+        return layout {
+            ForEach(Array(ideas.enumerated()), id: \.element.id) { index, idea in
+                HangingNote(idea: idea, copied: line.copied == idea.id, edit: { edit(idea) }, copy: {
+                    NSPasteboard.general.clearContents(); NSPasteboard.general.setString(idea.text, forType: .string)
+                    line.copied = idea.id
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { line.copied = nil }
+                }, archive: { store.archive(idea.id, true) })
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 10, coordinateSpace: .global)
+                        .updating($drag) { value, state, transaction in
+                            transaction.animation = nil
+                            state = NoteDrag(id: idea.id, translation: value.translation)
+                        }
+                        .onEnded { value in
+                            let target = ClotheslineLayout.destinationIndex(from: index, translation: value.translation, count: ideas.count, position: line.position)
+                            if target != index {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                                    _ = store.moveActive(idea.id, to: page * line.capacity + target)
+                                }
+                            }
+                        },
+                    including: ideas.count > 1 ? .all : .subviews
+                )
+                .padding(.top, line.position.isVertical ? 0 : ClotheslineLayout.noteTopInset(index: index, count: ideas.count, width: width))
+                .offset(x: line.position.isVertical ? 0 : noteOffset(index: index, count: ideas.count, source: sourceIndex, target: targetIndex),
+                        y: line.position.isVertical ? noteOffset(index: index, count: ideas.count, source: sourceIndex, target: targetIndex) : 0)
+                .zIndex(drag?.id == idea.id ? 1 : 0)
+                .animation(drag?.id == idea.id ? nil : .spring(response: 0.3, dampingFraction: 0.85), value: targetIndex)
+                .help(line.position.isVertical ? "点击编辑，上下拖动调整顺序" : "点击编辑，左右拖动调整顺序")
+            }
+        }.padding(.top, line.position.isVertical ? 20 : 0)
+    }
+
+    private func toolbar(page: Int, count: Int, isEmpty: Bool) -> some View {
+        let layout = line.position.isVertical
+            ? AnyLayout(VStackLayout(spacing: 10))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
+            HStack(spacing: 12) {
+                if !isEmpty {
+                    Button(action: compose) {
+                        Label("新建选题", systemImage: "plus")
+                            .padding(.horizontal, 10).padding(.vertical, 5)
+                            .background(ink, in: Capsule()).foregroundStyle(.white)
+                    }
+                    Divider().frame(height: 12)
+                }
+                Button(action: library) {
+                    Label(isEmpty ? "全部选题" : "全部 \(store.active.count) 条", systemImage: "tray.full")
+                        .foregroundStyle(ink)
+                }
+            }
+            if !line.position.isVertical && store.active.count > 1 && line.capacity > 1 {
+                Text("拖动便签排序")
+                    .font(.system(size: AppTypeScale.caption)).foregroundStyle(inkSecondary)
+            }
+            if count > 1 {
+                HStack(spacing: 12) {
+                    Button { line.page = max(0, page - 1) } label: {
+                        Image(systemName: line.position.isVertical ? "chevron.up" : "chevron.left")
+                    }.disabled(page == 0).help("上一页")
+                    Text("\(page + 1) / \(count)").monospacedDigit()
+                        .font(.system(size: AppTypeScale.caption)).foregroundStyle(inkSecondary)
+                    Button { line.page = min(count - 1, page + 1) } label: {
+                        Image(systemName: line.position.isVertical ? "chevron.down" : "chevron.right")
+                    }.disabled(page == count - 1).help("下一页")
+                }
+            }
+        }.buttonStyle(.plain).font(.system(size: AppTypeScale.small, weight: .medium))
+            .padding(.horizontal, 14).padding(.vertical, 8)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(inkBorder, lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 3)
+            .interactive()
+    }
+
+    private func noteOffset(index: Int, count: Int, source: Int?, target: Int?) -> CGFloat {
+        guard let source, let target, let drag else { return 0 }
+        let distance = line.position.isVertical ? drag.translation.height : drag.translation.width
+        let crossDistance = line.position.isVertical ? drag.translation.width : drag.translation.height
+        guard abs(distance) > abs(crossDistance) else { return 0 }
+        let stride = line.position.noteStride
+        if index == source {
+            return max(-CGFloat(source) * stride, min(CGFloat(count - 1 - source) * stride, distance))
+        }
+        if source < target && index > source && index <= target { return -stride }
+        if source > target && index >= target && index < source { return stride }
         return 0
     }
+
 }
 struct HangingNote: View {
     let idea: Idea
