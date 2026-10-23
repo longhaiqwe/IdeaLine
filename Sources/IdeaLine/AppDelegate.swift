@@ -110,10 +110,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         placeLine(); linePanel.orderFrontRegardless(); line.revealed = true
         peekUntil = Date().addingTimeInterval(seconds); awaySince = nil
     }
-    private func hideLine() { line.revealed = false; linePanel.ignoresMouseEvents = true; enteredEdge = nil; awaySince = nil }
-    @objc private func toggleLine() { if line.revealed { hideLine() } else { reveal(seconds: 6) } }
+    private func hideLine(manually: Bool = false) {
+        guard line.hide(manually: manually) else { return }
+        linePanel.ignoresMouseEvents = true; enteredEdge = nil; awaySince = nil
+    }
+    @objc private func toggleLine() { if line.revealed { hideLine(manually: true) } else { reveal(seconds: 6) } }
     private func tick() {
-        guard !menuOpen, composer?.isVisible != true else { return }
+        guard !menuOpen, composer?.isVisible != true || line.isPinned else { return }
         let mouse = NSEvent.mouseLocation
         let now = Date()
         guard let screen = pointerScreen else { return }
@@ -136,7 +139,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let local = NSPoint(x: mouse.x - linePanel.frame.minX, y: linePanel.frame.maxY - mouse.y)
         linePanel.ignoresMouseEvents = !line.hitRects.contains { $0.insetBy(dx: -8, dy: -8).contains(local) }
         let zone = line.position.interactionZone(panel: linePanel.frame, screen: (lineScreen ?? screen).frame)
-        if zone.contains(mouse) || now < peekUntil { awaySince = nil }
+        if line.isPinned || zone.contains(mouse) || now < peekUntil { awaySince = nil }
         else {
             if awaySince == nil { awaySince = now }
             if now.timeIntervalSince(awaySince!) > 0.55 { hideLine() }

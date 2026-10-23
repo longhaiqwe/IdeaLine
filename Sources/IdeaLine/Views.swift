@@ -185,13 +185,35 @@ struct ComposerView: View {
 }
 
 final class LineState: ObservableObject {
+    static let pinnedDefaultsKey = "linePinned"
+    private let defaults: UserDefaults
     @Published var position: LinePosition = .saved()
     @Published var revealed = false
+    @Published var isPinned: Bool {
+        didSet {
+            defaults.set(isPinned, forKey: Self.pinnedDefaultsKey)
+            if isPinned { revealed = true }
+        }
+    }
     @Published var page = 0
     @Published var capacity = 5
     @Published var copied: UUID?
     var hitRects: [CGRect] = []
 
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        isPinned = defaults.bool(forKey: Self.pinnedDefaultsKey)
+        revealed = isPinned
+    }
+
+    /// Automatic dismissal respects the pin; an explicit hide also releases it.
+    @discardableResult
+    func hide(manually: Bool = false) -> Bool {
+        guard manually || !isPinned else { return false }
+        if manually { isPinned = false }
+        revealed = false
+        return true
+    }
 }
 struct HitRects: PreferenceKey {
     static var defaultValue: [CGRect] = []
@@ -219,6 +241,46 @@ enum ClotheslineLayout {
         return 4 + 92 * f * (1 - f)
     }
 }
+
+/// Sample the windows beneath the floating panel, even when another app is active.
+private struct ClotheslineGlass: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSVisualEffectView {
+        let view = NSVisualEffectView()
+        view.material = .popover
+        view.blendingMode = .behindWindow
+        view.state = .active
+        view.appearance = NSAppearance(named: .aqua)
+        return view
+    }
+
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
+}
+
+private struct ClotheslineBackdrop: View {
+    var body: some View {
+        ClotheslineGlass()
+            .overlay {
+                // Match the promotional canvas, keeping only a little backdrop tint.
+                LinearGradient(
+                    colors: [
+                        Color(red: 0.98, green: 0.97, blue: 0.93),
+                        Color(red: 0.93, green: 0.94, blue: 0.90)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ).opacity(0.94)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(.white.opacity(0.55), lineWidth: 1)
+            }
+            .padding(4)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
 struct ClotheslineView: View {
     @ObservedObject var store: IdeaStore
     @ObservedObject var line: LineState
@@ -228,6 +290,14 @@ struct ClotheslineView: View {
         var id: UUID
         var translation: CGSize
     }
+    /// Last drag velocity of a note; kept after release so the swing can settle.
+    private struct NotePush {
+        var id: UUID
+        var tilt: Double
+        var at: Date
+    }
+    @State private var push: NotePush?
+    @State private var gustAt = Date.distantPast
     var edit: (Idea) -> Void
     var compose: () -> Void
     var library: () -> Void
@@ -281,6 +351,12 @@ struct ClotheslineView: View {
                 .offset(line.revealed ? .zero : line.position.hiddenOffset)
                 .animation(.spring(response: 0.46, dampingFraction: 0.8), value: line.revealed)
                 .animation(.spring(response: 0.4, dampingFraction: 0.75), value: ideas.map(\.id))
+                .background {
+                    ClotheslineBackdrop()
+                        .opacity(line.revealed ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.24), value: line.revealed)
+                }
+                .onChange(of: line.revealed) { _, shown in if shown { gustAt = Date() } }
         }.preferredColorScheme(.light)
     }
 
@@ -327,12 +403,19 @@ struct ClotheslineView: View {
                     NSPasteboard.general.clearContents(); NSPasteboard.general.setString(idea.text, forType: .string)
                     line.copied = idea.id
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.4) { line.copied = nil }
-                }, archive: { store.archive(idea.id, true) })
+                }, archive: { store.archive(idea.id, true) },
+                motion: NoteMotion(seed: idea.id, live: line.revealed, gustAt: gustAt.addingTimeInterval(0.12 + Double(index) * 0.08),
+                                   push: push?.id == idea.id ? push!.tilt : 0, pushedAt: push?.at ?? .distantPast))
                 .highPriorityGesture(
                     DragGesture(minimumDistance: 10, coordinateSpace: .global)
                         .updating($drag) { value, state, transaction in
                             transaction.animation = nil
                             state = NoteDrag(id: idea.id, translation: value.translation)
+                        }
+                        .onChanged { value in
+                            // A hanging note lags behind a sideways drag.
+                            guard !line.position.isVertical else { return }
+                            push = NotePush(id: idea.id, tilt: max(-8, min(8, value.velocity.width / 100)), at: value.time)
                         }
                         .onEnded { value in
                             let target = ClotheslineLayout.destinationIndex(from: index, translation: value.translation, count: ideas.count, position: line.position)
@@ -389,6 +472,16 @@ struct ClotheslineView: View {
                     }.disabled(page == count - 1).help("下一页")
                 }
             }
+            Button { line.isPinned.toggle() } label: {
+                Label(line.isPinned ? "已固定" : "固定", systemImage: line.isPinned ? "pin.fill" : "pin")
+                    .frame(minWidth: 62)
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .foregroundStyle(line.isPinned ? Color.white : inkSecondary)
+                    .background(line.isPinned ? ink : Color.clear, in: Capsule())
+            }
+            .help(line.isPinned ? "取消固定，鼠标移开后自动收起" : "固定衣杆，保持展开")
+            .accessibilityLabel("固定衣杆")
+            .accessibilityValue(line.isPinned ? "已开启" : "已关闭")
         }.buttonStyle(.plain).font(.system(size: AppTypeScale.small, weight: .medium))
             .padding(.horizontal, 14).padding(.vertical, 8)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
@@ -412,12 +505,63 @@ struct ClotheslineView: View {
     }
 
 }
+/// Inputs for a note's swing around its peg.
+struct NoteMotion {
+    var seed: UUID
+    var live: Bool
+    var gustAt: Date
+    var push: Double
+    var pushedAt: Date
+}
+
+private struct Swaying: ViewModifier {
+    var motion: NoteMotion
+    var calm: Double
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ViewBuilder func body(content: Content) -> some View {
+        if reduceMotion {
+            content
+        } else {
+            // Pause while the line is hidden off screen.
+            TimelineView(.animation(minimumInterval: 1 / 60, paused: !motion.live)) { context in
+                content.modifier(NoteSwing(time: context.date.timeIntervalSinceReferenceDate, motion: motion, calm: calm))
+            }
+        }
+    }
+}
+
+/// Idle sway, a gust when the line opens, and the swing that settles after a drag.
+private struct NoteSwing: GeometryEffect {
+    var time: TimeInterval
+    var motion: NoteMotion
+    var calm: Double
+    var animatableData: Double {
+        get { calm }
+        set { calm = newValue }
+    }
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        let bytes = motion.seed.uuid
+        let w = 2 * Double.pi / (3.4 + Double(bytes.1 % 8) * 0.2)
+        let phase = Double(bytes.2) / 255 * 2 * .pi
+        var degrees = calm * (0.9 * sin(w * time + phase) + 0.3 * sin(2.3 * w * time + phase * 1.7))
+        let gust = time - motion.gustAt.timeIntervalSinceReferenceDate
+        if gust > 0 { degrees += 3.2 * exp(-gust / 0.6) * sin(2 * .pi * gust) }
+        // Hold the tilt between drag events; decay once the pointer stops.
+        let settle = max(0, time - motion.pushedAt.timeIntervalSinceReferenceDate - 0.05)
+        degrees += motion.push * exp(-settle / 0.35) * cos(2 * .pi * settle / 0.9)
+        let pivot = size.width / 2
+        return ProjectionTransform(CGAffineTransform(translationX: pivot, y: 0)
+            .rotated(by: degrees * .pi / 180).translatedBy(x: -pivot, y: 0))
+    }
+}
+
 struct HangingNote: View {
     let idea: Idea
     var copied: Bool
     var edit: () -> Void
     var copy: () -> Void
     var archive: () -> Void
+    var motion: NoteMotion
     @State private var hover = false
     @State private var arrived = false
     var body: some View {
@@ -475,6 +619,7 @@ struct HangingNote: View {
             .interactive()
             .contextMenu { Button("编辑", action: edit); Button("复制", action: copy); Button("收纳", action: archive) }
         }.foregroundStyle(ink).rotationEffect(.degrees(arrived ? (hover ? 0 : tilt) : -12), anchor: .top)
+            .modifier(Swaying(motion: motion, calm: hover ? 0 : 1))
             .scaleEffect(hover ? 1.035 : 1, anchor: .top).onHover { hover = $0 }
             .animation(.spring(response: 0.5, dampingFraction: 0.45), value: hover)
             .onAppear { withAnimation(.spring(response: 0.7, dampingFraction: 0.36)) { arrived = true } }

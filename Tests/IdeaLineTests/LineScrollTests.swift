@@ -27,7 +27,7 @@ final class LineScrollTests: XCTestCase {
             RunLoop.main.run(until: Date().addingTimeInterval(0.15))
             let scroll = try XCTUnwrap(findScroll(in: host), "Sidebars need a native scroll container for mouse wheels and trackpads")
             XCTAssertFalse(scroll.hasVerticalScroller, "Keep native scrolling without a visible scrollbar")
-            XCTAssertGreaterThan(scroll.contentView.bounds.height, 850, "Use the free space above the compact toolbar")
+            XCTAssertGreaterThan(scroll.contentView.bounds.height, 830, "Use the free space above the two-row toolbar with its pin control")
             let document = try XCTUnwrap(scroll.documentView)
             XCTAssertGreaterThan(document.frame.height, 2100, "All ten notes must be present, not just three")
             XCTAssertEqual(scroll.contentView.bounds.minY, 0, accuracy: 1)
