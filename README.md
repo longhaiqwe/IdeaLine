@@ -2,6 +2,10 @@
 
 原生 macOS X 选题记录工具。使用快捷键呼出书写窗口，按 Cmd+Enter 将便签挂靠在屏幕边缘的衣杆上，可选择上下左右四个方位。
 
+https://github.com/user-attachments/assets/e9253fd3-f03a-416e-86a1-77aeca06d6e5
+
+*介绍视频（39 秒）：用 Blender 制作，界面贴图由应用源码渲染，内容均为示例选题，音乐和音效由代码合成。制作脚本见 [promo/](promo/)。*
+
 ![灵感晾台顶部衣杆：彩色便签悬挂展示选题，可拖动排序、复制和收纳](docs/images/clothesline.png)
 
 *演示图由应用真实界面组件渲染，内容均为示例选题，背景为展示用。*
