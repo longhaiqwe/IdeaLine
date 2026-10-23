@@ -148,10 +148,14 @@ private struct ComposerFace: View {
 
 // MARK: - Clothesline toolbar (top position)
 
+/// ClotheslineView.toolbar as of v1.3.0, shown pinned (the line stays open throughout the film).
 private struct Toolbar: View {
     let total: Int
+    var vertical = false
+    var pinned = true
     var body: some View {
-        HStack(spacing: 12) {
+        let layout = vertical ? AnyLayout(VStackLayout(spacing: 10)) : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             HStack(spacing: 12) {
                 Label("新建选题", systemImage: "plus")
                     .padding(.horizontal, 10).padding(.vertical, 5)
@@ -159,7 +163,16 @@ private struct Toolbar: View {
                 Divider().frame(height: 12)
                 Label("全部 \(total) 条", systemImage: "tray.full").foregroundStyle(ink)
             }
-            Text("拖动便签排序").font(.system(size: AppTypeScale.caption)).foregroundStyle(inkSecondary)
+            .fixedSize()
+            if !vertical {
+                Text("拖动便签排序").font(.system(size: AppTypeScale.caption)).foregroundStyle(inkSecondary)
+            }
+            Label(pinned ? "已固定" : "固定", systemImage: pinned ? "pin.fill" : "pin")
+                .frame(minWidth: 62)
+                .padding(.horizontal, 8).padding(.vertical, 5)
+                .foregroundStyle(pinned ? Color.white : inkSecondary)
+                .background(pinned ? ink : Color.clear, in: Capsule())
+                .fixedSize()
         }
         .font(.system(size: AppTypeScale.small, weight: .medium))
         .padding(.horizontal, 14).padding(.vertical, 8)
@@ -167,6 +180,22 @@ private struct Toolbar: View {
         .overlay(RoundedRectangle(cornerRadius: 20).stroke(inkBorder, lineWidth: 0.5))
         .padding(1)
         .fixedSize()
+    }
+}
+
+// MARK: - Clothesline backdrop (ClotheslineBackdrop without the window blur), full panel frame
+
+private struct Backdrop: View {
+    var body: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(LinearGradient(
+                colors: [Color(red: 0.98, green: 0.97, blue: 0.93), Color(red: 0.93, green: 0.94, blue: 0.90)],
+                startPoint: .topLeading, endPoint: .bottomTrailing))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(.white.opacity(0.55), lineWidth: 1)
+            }
+            .padding(4)
     }
 }
 
@@ -392,6 +421,11 @@ struct PromoTextures {
         let total = content.notes.count
         record("ui/toolbar_before.png", try save(Toolbar(total: total), size: nil, scale: 4, to: out.appendingPathComponent("ui/toolbar_before.png")))
         record("ui/toolbar_after.png", try save(Toolbar(total: total + 1), size: nil, scale: 4, to: out.appendingPathComponent("ui/toolbar_after.png")))
+        record("ui/toolbar_side.png", try save(Toolbar(total: total + 1, vertical: true), size: nil, scale: 4, to: out.appendingPathComponent("ui/toolbar_side.png")))
+
+        // Backdrops: top/bottom panels are 1600 x 286 pt, left/right are 286 x 975 pt (visible frame below the menu bar)
+        record("ui/backdrop_h.png", try save(Backdrop(), size: CGSize(width: 1600, height: 286), scale: 2, to: out.appendingPathComponent("ui/backdrop_h.png")))
+        record("ui/backdrop_v.png", try save(Backdrop(), size: CGSize(width: 286, height: 975), scale: 2, to: out.appendingPathComponent("ui/backdrop_v.png")))
 
         // Desktop
         record("ui/desktop.png", try save(Desktop(), size: CGSize(width: 1600, height: 1000), scale: 2, to: out.appendingPathComponent("ui/desktop.png")))

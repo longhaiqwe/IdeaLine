@@ -35,6 +35,7 @@ swiftc -parse-as-library Sources/IdeaLine/{Store,HotKeys,Views,LinePosition}.swi
 promo/build/cover-text promo/build/cover/icon.png promo/build/cover/cover_text.png
 python3 promo/composite/make_cover.py                               # 封面
 python3 promo/composite/composite.py                                # 成片
+promo/composite/make_web.sh                                         # 10 MB 以内的 720p 网页版，用于 README
 ```
 
 - 文案在 `promo/content.json`，镜头时长在 `promo/timeline.py`（100 BPM，每拍 18 帧）。改完从第一步重跑。
@@ -42,6 +43,7 @@ python3 promo/composite/composite.py                                # 成片
 - 渲染引擎是 EEVEE，48 采样。我的 M2（10 核 GPU）实测每帧约 6～14 秒，全片约 3.5 小时。设置 `PROMO_QUALITY=preview` 可降低采样做预览。
 - 注意：`build_scene.py` 会重建 `promo/build/composer_seq/`，正在渲染时不要运行它；`render_cover.py` 只读场景，可以同时运行。
 - 便签、书写窗口、全部选题页的贴图由应用源码里的颜色、字号和 `LibraryView` 渲染，内容为示例数据。
+- 界面按 v1.3.0：衣杆背后有磨砂底板，工具条带「固定」按钮。视频里衣杆一直展开，所以按钮显示「已固定」。切换方位时衣杆滑动，底板原位淡入淡出，与 `ClotheslineView` 一致。
 
 ## 素材来源
 

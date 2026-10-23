@@ -29,30 +29,30 @@ private struct Cover: View {
             HStack(alignment: .center, spacing: 24) {
                 Image(nsImage: icon)
                     .resizable()
-                    .frame(width: 92, height: 92)
+                    .frame(width: 80, height: 80)
                     .shadow(color: .black.opacity(0.14), radius: 10, y: 5)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("IDEA LINE")
                         .font(.system(size: 13, weight: .semibold, design: .monospaced)).tracking(6)
                         .foregroundStyle(accent)
                     Text("灵感晾台")
-                        .font(.custom("Songti SC", size: 72).weight(.semibold))
+                        .font(.custom("Songti SC", size: 62).weight(.semibold))
                         .foregroundStyle(ink)
                 }
             }
             Text("把灵感，先晾起来。")
-                .font(.custom("Songti SC", size: 30).weight(.medium))
+                .font(.custom("Songti SC", size: 27).weight(.medium))
                 .foregroundStyle(inkSecondary)
-                .padding(.top, 16)
+                .padding(.top, 12)
             HStack(spacing: 10) {
                 Chip(keys: "⌃⌥N", text: "随手记录")
                 Chip(keys: "⌘↵", text: "挂上衣杆")
                 Chip(keys: nil, text: "macOS 14+")
             }
-            .padding(.top, 24)
+            .padding(.top, 20)
         }
         .padding(.leading, 64)
-        .padding(.bottom, 52)
+        .padding(.bottom, 40)
         .frame(width: 960, height: 540, alignment: .bottomLeading)
         .shadow(color: Color(red: 0.98, green: 0.97, blue: 0.94).opacity(0.7), radius: 14)
     }

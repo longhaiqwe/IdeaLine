@@ -26,6 +26,7 @@ import timeline as T  # noqa: E402
 BUILD = os.path.join(PROMO, "build")
 TEX = os.path.join(BUILD, "textures")
 CONTENT = json.load(open(os.path.join(PROMO, "content.json"), encoding="utf-8"))
+MANIFEST = json.load(open(os.path.join(TEX, "manifest.json")))
 QUALITY = os.environ.get("PROMO_QUALITY", "final")  # "preview" lowers samples
 
 F0, F1 = T.FRAME_START, T.FRAME_END
@@ -944,9 +945,9 @@ for rig in (rig_top, rig_bottom, rig_right, rig_left):
     rig["objs"] = objs
 
 
-def toolbar_obj(name, rel, z):
-    w = mm(296)
-    h = mm(43)
+def toolbar_obj(name, rel, rig, x, top):
+    """Toolbar pill parented to a rig; `top` is the z of its upper edge."""
+    w, h = mm(MANIFEST[rel]["w"]), mm(MANIFEST[rel]["h"])
     mt = mat_paper_face(name, rel, w, h, 0, display_frame, emission=0.25)
     # the texture already carries the pill shape in its alpha
     nt = mt.node_tree
@@ -958,14 +959,70 @@ def toolbar_obj(name, rel, z):
     nt.links.new(tex.outputs["Alpha"], mul.inputs[1])
     nt.links.new(mul.outputs[0], mix.inputs["Fac"])
     o = slab(name, col_main, w, h, mm(0.2), 0, [mt, mt, mt])
-    o.location = (0, -mm(14), z)
-    o.parent = rig_top["root"]
+    o.location = (x, -mm(14), top - h / 2)
+    o.parent = rig["root"]
     o["screen_mask"] = 1.0
     return o
 
 
-toolbar_before = toolbar_obj("toolbar_before", "ui/toolbar_before.png", SCREEN_H / 2 - MENU - mm(228) - mm(21.5))
-toolbar_after = toolbar_obj("toolbar_after", "ui/toolbar_after.png", SCREEN_H / 2 - MENU - mm(228) - mm(21.5))
+TOP_PANEL_TOP = SCREEN_H / 2 - MENU
+SIDE_X = SCREEN_W / 2 - mm(143)
+toolbar_before = toolbar_obj("toolbar_before", "ui/toolbar_before.png", rig_top, 0, TOP_PANEL_TOP - mm(228))
+toolbar_after = toolbar_obj("toolbar_after", "ui/toolbar_after.png", rig_top, 0, TOP_PANEL_TOP - mm(228))
+toolbar_bottom = toolbar_obj("toolbar_bottom", "ui/toolbar_after.png", rig_bottom, 0, BOTTOM_PANEL_TOP - mm(228))
+_side_h = mm(MANIFEST["ui/toolbar_side.png"]["h"])
+toolbar_right = toolbar_obj("toolbar_right", "ui/toolbar_side.png", rig_right, SIDE_X, -SCREEN_H / 2 + mm(12) + _side_h)
+toolbar_left = toolbar_obj("toolbar_left", "ui/toolbar_side.png", rig_left, -SIDE_X, -SCREEN_H / 2 + mm(12) + _side_h)
+
+
+def mat_ui_panel(key, rel):
+    """On-screen UI layer: lit like the screen (dimmed base + emission), alpha from the texture."""
+    m, nt, out = new_material(key)
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = load_image(rel)
+    tex.interpolation = "Cubic"
+    tex.extension = "CLIP"
+    dim = nt.nodes.new("ShaderNodeMix")
+    dim.data_type = "RGBA"
+    dim.blend_type = "MULTIPLY"
+    dim.inputs["Factor"].default_value = 1.0
+    dim.inputs["B"].default_value = (0.55, 0.55, 0.55, 1)
+    nt.links.new(tex.outputs["Color"], dim.inputs["A"])
+    bsdf = nt.nodes.new("ShaderNodeBsdfPrincipled")
+    nt.links.new(dim.outputs["Result"], bsdf.inputs["Base Color"])
+    nt.links.new(tex.outputs["Color"], bsdf.inputs["Emission Color"])
+    bsdf.inputs["Emission Strength"].default_value = 0.62
+    bsdf.inputs["Roughness"].default_value = 0.35
+    bsdf.inputs["Coat Weight"].default_value = 0.6
+    bsdf.inputs["Coat Roughness"].default_value = 0.03
+    alpha_chain(nt, bsdf.outputs[0], out, tex.outputs["Alpha"], display_frame)
+    # Dithered transparency 0.7 mm in front of the screen produces stair-step shadow streaks
+    # while it fades; forward blending does not.
+    m.surface_render_method = "BLENDED"
+    return m
+
+
+def backdrop_obj(name, rel, w, h, x, z):
+    """ClotheslineBackdrop: stays on the panel frame and fades; it does not slide with the line."""
+    m = mat_ui_panel(name, rel)
+    o = slab(name, col_main, w, h, mm(0.2), 0, [m, m, m])
+    o.location = (x, -mm(1.2), z)
+    o["screen_mask"] = 1.0
+    o.visible_shadow = False  # flat on the screen; it only receives shadows
+    return o
+
+
+_side_len = TOP_PANEL_TOP + SCREEN_H / 2
+BACKDROPS = {
+    "top": backdrop_obj("backdrop_top", "ui/backdrop_h.png", SCREEN_W, mm(286), 0, TOP_PANEL_TOP - mm(143)),
+    "bottom": backdrop_obj("backdrop_bottom", "ui/backdrop_h.png", SCREEN_W, mm(286), 0, -SCREEN_H / 2 + mm(143)),
+    "right": backdrop_obj("backdrop_right", "ui/backdrop_v.png", mm(286), _side_len, SIDE_X, TOP_PANEL_TOP - _side_len / 2),
+    "left": backdrop_obj("backdrop_left", "ui/backdrop_v.png", mm(286), _side_len, -SIDE_X, TOP_PANEL_TOP - _side_len / 2),
+}
+for _rig, _extra in ((rig_bottom, [toolbar_bottom, BACKDROPS["bottom"]]),
+                     (rig_right, [toolbar_right, BACKDROPS["right"]]),
+                     (rig_left, [toolbar_left, BACKDROPS["left"]])):
+    _rig["objs"] += _extra
 
 # Composer window: image sequence built from typing states
 COMPOSER_POS = Vector((0, -mm(210), mm(30)))
@@ -1591,6 +1648,15 @@ for kind, t_in, t_out in sequence:
         if t_out is not None and f >= t_out:
             shown = 1 - spring(secs(f - t_out), 0.32, 1.0)
         arr[fi(f)] = OFFSETS[kind] * (1 - shown)
+    # the backdrop fades in place (easeInOut 0.24 s) instead of sliding
+    bd_fade = chan(BACKDROPS[kind], '["fade"]', 1)
+    for f in frames(edg0, edg1):
+        a = 1.0
+        if t_in is not None:
+            a = ease_io((f - t_in - 4) / 7.2) if f >= t_in + 4 else 0.0
+        if t_out is not None and f >= t_out:
+            a = 1 - ease_io((f - t_out) / 7.2)
+        bd_fade[fi(f), 0] = 1 - a
     # top rig returns for the drag shot
     if kind == "top":
         for f in frames(edg1, F1 + 1):
