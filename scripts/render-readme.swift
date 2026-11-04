@@ -45,7 +45,11 @@ struct ReadmeRenderer {
         try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
         try JSONEncoder().encode(SavedState(ideas: ideas, draft: Draft())).write(to: store.url)
         let demo = IdeaStore(url: store.url)
-        let line = LineState()
+        let suite = "IdeaLinePreview-\(UUID())"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let style = CommandLine.arguments.contains("--looseleaf") ? PaperStyle.looseleaf : .classic
+        let line = LineState(defaults: defaults)
         line.position = .top
         line.capacity = 5
         line.revealed = true
@@ -69,18 +73,18 @@ struct ReadmeRenderer {
                 Spacer(minLength: 0)
             }
         }
-        try render(hero, size: NSSize(width: 1200, height: 560), to: output.appendingPathComponent("clothesline.png"))
+        try render(hero.environment(\.paperStyle, style), size: NSSize(width: 1200, height: 560), to: output.appendingPathComponent("clothesline.png"))
 
         for position in LinePosition.allCases {
             let frame = position.panelFrame(in: CGRect(x: 0, y: 0, width: 1200, height: 900))
-            let preview = LineState()
+            let preview = LineState(defaults: defaults)
             preview.position = position
             preview.capacity = position.capacity(in: frame)
             preview.revealed = true
             let view = DemoCanvas {
                 ClotheslineView(store: demo, line: preview, edit: { _ in }, compose: {}, library: {})
             }
-            try render(view, size: frame.size, to: output.appendingPathComponent("position-\(position.rawValue).png"))
+            try render(view.environment(\.paperStyle, style), size: frame.size, to: output.appendingPathComponent("position-\(position.rawValue).png"))
         }
 
         let composer = DemoCanvas {
@@ -88,7 +92,7 @@ struct ReadmeRenderer {
                 .frame(width: 600, height: 450)
                 .shadow(color: .black.opacity(0.12), radius: 24, y: 12)
         }
-        try render(composer, size: NSSize(width: 800, height: 610), to: output.appendingPathComponent("composer.png"))
+        try render(composer.environment(\.paperStyle, style), size: NSSize(width: 800, height: 610), to: output.appendingPathComponent("composer.png"))
 
         let library = DemoCanvas {
             LibraryView(store: demo, compose: {}, edit: { _ in }, export: {})
@@ -97,7 +101,7 @@ struct ReadmeRenderer {
                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(inkBorder, lineWidth: 1))
                 .shadow(color: .black.opacity(0.10), radius: 24, y: 12)
         }
-        try render(library, size: NSSize(width: 1040, height: 810), to: output.appendingPathComponent("library.png"))
+        try render(library.environment(\.paperStyle, style), size: NSSize(width: 1040, height: 810), to: output.appendingPathComponent("library.png"))
     }
 
     @MainActor

@@ -29,6 +29,8 @@ final class LinePanel: NSPanel {
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let store = IdeaStore()
     let line = LineState()
+    let appearance = AppearanceState()
+    private var styleItems: [NSMenuItem] = []
     private let updates = UpdateController()
     private var status: NSStatusItem!
     private var linePanel: LinePanel!
@@ -50,7 +52,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.setActivationPolicy(.accessory)
         buildMainMenu()
         linePanel = LinePanel()
-        let host = NSHostingView(rootView: ClotheslineView(store: store, line: line, edit: { [weak self] in self?.openEditor($0) }, compose: { [weak self] in self?.openEditor() }, library: { [weak self] in self?.openLibrary() }))
+        let host = NSHostingView(rootView: StyledRoot(appearance: appearance) { ClotheslineView(store: store, line: line, edit: { [weak self] in self?.openEditor($0) }, compose: { [weak self] in self?.openEditor() }, library: { [weak self] in self?.openLibrary() }) })
         host.sizingOptions = []; linePanel.contentView = host
         placeLine(); linePanel.orderFrontRegardless()
         setupMenu()
@@ -156,6 +158,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         positionItems.forEach { $0.state = ($0.representedObject as? String) == value ? .on : .off }
         reveal(seconds: 6)
     }
+    @objc private func changePaperStyle(_ sender: NSMenuItem) {
+        guard let value = sender.representedObject as? String,
+              let style = PaperStyle(rawValue: value) else { return }
+        appearance.style = style
+        styleItems.forEach { $0.state = ($0.representedObject as? String) == value ? .on : .off }
+    }
     @objc func newIdea() { openEditor() }
     func openEditor(_ idea: Idea? = nil) {
         if composer?.isVisible == true {
@@ -181,9 +189,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         panel.isMovableByWindowBackground = true; panel.isReleasedWhenClosed = false; panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]; panel.hidesOnDeactivate = false
         panel.isOpaque = false; panel.backgroundColor = .clear; panel.hasShadow = true
-        panel.contentView = NSHostingView(rootView: ComposerView(store: store, draft: draft, close: { [weak self] in self?.closeEditor() }, saved: { [weak self] in
+        panel.contentView = NSHostingView(rootView: StyledRoot(appearance: appearance) { ComposerView(store: store, draft: draft, close: { [weak self] in self?.closeEditor() }, saved: { [weak self] in
             self?.closeEditor(); self?.line.page = 0; self?.reveal(seconds: 3.5)
-        }).preferredColorScheme(.light))
+        }).preferredColorScheme(.light) })
         if let screen = pointerScreen { let f = screen.visibleFrame; panel.setFrameOrigin(NSPoint(x: f.midX - 300, y: f.midY - 190)) }
         composer = panel; hideLine(); NSApp.activate(ignoringOtherApps: true); panel.makeKeyAndOrderFront(nil)
     }
@@ -197,7 +205,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             window.title = "灵感晾台"; window.titlebarAppearsTransparent = true; window.titleVisibility = .hidden
             window.isReleasedWhenClosed = false
             window.onNew = { [weak self] in self?.openEditor() }
-            window.contentView = NSHostingView(rootView: LibraryView(store: store, compose: { [weak self] in self?.openEditor() }, edit: { [weak self] in self?.openEditor($0) }, export: { [weak self] in self?.exportMarkdown() }))
+            window.contentView = NSHostingView(rootView: StyledRoot(appearance: appearance) { LibraryView(store: store, compose: { [weak self] in self?.openEditor() }, edit: { [weak self] in self?.openEditor($0) }, export: { [weak self] in self?.exportMarkdown() }) })
             window.center(); library = window
         }
         hideLine(); NSApp.activate(ignoringOtherApps: true); library?.makeKeyAndOrderFront(nil)
@@ -242,6 +250,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let positionItem = NSMenuItem(title: "晾台位置", action: nil, keyEquivalent: "")
         positionItem.submenu = positionMenu
         menu.addItem(positionItem)
+        let styleMenu = NSMenu(title: "界面风格")
+        for style in PaperStyle.allCases {
+            let option = NSMenuItem(title: style.title, action: #selector(changePaperStyle(_:)), keyEquivalent: "")
+            option.target = self
+            option.representedObject = style.rawValue
+            option.state = appearance.style == style ? .on : .off
+            styleMenu.addItem(option)
+            styleItems.append(option)
+        }
+        let styleItem = NSMenuItem(title: "界面风格", action: nil, keyEquivalent: "")
+        styleItem.submenu = styleMenu
+        menu.addItem(styleItem)
         menu.addItem(.separator())
         item("导出 Markdown…", #selector(exportMarkdown)); item("打开数据文件夹", #selector(showData))
         menu.addItem(.separator())

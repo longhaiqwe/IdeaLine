@@ -4,6 +4,6 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 mkdir -p promo/build
 swiftc -parse-as-library -O \
-  Sources/IdeaLine/Store.swift Sources/IdeaLine/HotKeys.swift Sources/IdeaLine/Views.swift Sources/IdeaLine/LinePosition.swift \
+  Sources/IdeaLine/Store.swift Sources/IdeaLine/HotKeys.swift Sources/IdeaLine/Views.swift Sources/IdeaLine/LinePosition.swift Sources/IdeaLine/Appearance.swift \
   promo/textures/PromoTextures.swift -o promo/build/promo-textures
 promo/build/promo-textures promo/content.json promo/build/textures

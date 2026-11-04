@@ -81,6 +81,7 @@ struct WritingEditor: NSViewRepresentable {
 }
 
 struct ComposerView: View {
+    @Environment(\.paperStyle) private var style
     @ObservedObject var store: IdeaStore
     @State var draft: Draft
     var close: () -> Void
@@ -132,7 +133,7 @@ struct ComposerView: View {
                 ForEach(0..<papers.count, id: \.self) { i in
                     Button { draft.color = i } label: {
                         ZStack {
-                            Circle().fill(papers[i]).frame(width: 22, height: 22)
+                            Circle().fill(style.note(i)).frame(width: 22, height: 22)
                             if draft.color == i {
                                 Circle().stroke(ink, lineWidth: 2).frame(width: 22, height: 22)
                                 Circle().fill(ink).frame(width: 6, height: 6)
@@ -158,15 +159,15 @@ struct ComposerView: View {
                         Text("⌘↵").font(.system(size: AppTypeScale.caption, design: .monospaced)).opacity(0.7)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 9)
-                    .foregroundStyle(.white)
-                    .background(ink, in: RoundedRectangle(cornerRadius: radiusCard * 2))
+                    .foregroundStyle(style == .looseleaf ? ink : .white)
+                    .paperSurface(style == .looseleaf ? style.sage : ink, radius: radiusCard * 2)
                 }
                 .buttonStyle(.plain)
                 .disabled(draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
             HStack {
-                Text("按 ⌘↵ 保存至顶部衣杆，Esc 保留草稿退出")
+                Text("按 ⌘↵ 保存至衣杆，Esc 保留草稿退出")
                     .font(.system(size: AppTypeScale.caption))
                     .foregroundStyle(inkSecondary)
                 Spacer()
@@ -174,9 +175,15 @@ struct ComposerView: View {
             .padding(.top, 14)
         }
         .padding(28)
-        .background(paper)
+        .background(style.canvas)
         .clipShape(RoundedRectangle(cornerRadius: radiusWindow))
-        .overlay(RoundedRectangle(cornerRadius: radiusWindow).stroke(inkBorder, lineWidth: 1))
+        .overlay {
+            if style == .looseleaf {
+                DrawnPaper().stroke(ink, lineWidth: 1.6)
+            } else {
+                RoundedRectangle(cornerRadius: radiusWindow).stroke(inkBorder, lineWidth: 1)
+            }
+        }
         .foregroundStyle(ink)
         .onExitCommand(perform: close)
         .onChange(of: draft) { _, value in store.draft(value) }
@@ -257,7 +264,19 @@ private struct ClotheslineGlass: NSViewRepresentable {
 }
 
 private struct ClotheslineBackdrop: View {
+    @Environment(\.paperStyle) private var style
     var body: some View {
+        Group {
+            if style == .looseleaf {
+                DrawnPaper().fill(style.sage)
+                    .overlay(DrawnPaper().stroke(ink, lineWidth: 1.6))
+                    .padding(4)
+            } else {
+                classicBackdrop
+            }
+        }.allowsHitTesting(false).accessibilityHidden(true)
+    }
+    private var classicBackdrop: some View {
         ClotheslineGlass()
             .overlay {
                 // Match the promotional canvas, keeping only a little backdrop tint.
@@ -282,6 +301,7 @@ private struct ClotheslineBackdrop: View {
 }
 
 struct ClotheslineView: View {
+    @Environment(\.paperStyle) private var style
     @ObservedObject var store: IdeaStore
     @ObservedObject var line: LineState
     @GestureState(resetTransaction: Transaction(animation: .spring(response: 0.3, dampingFraction: 0.85)))
@@ -367,7 +387,7 @@ struct ClotheslineView: View {
                 Text("暂无挂起选题").font(.system(size: AppTypeScale.subhead, weight: .medium, design: .serif))
                 Text("\(AppShortcut.newIdea.label)   新建选题").font(.system(size: AppTypeScale.caption, design: .monospaced)).foregroundStyle(inkSecondary)
             }
-            .padding(24).background(paper, in: RoundedRectangle(cornerRadius: 12))
+            .padding(24).paperSurface(style.canvas, radius: 12)
             .overlay(RoundedRectangle(cornerRadius: 12).stroke(inkBorder, lineWidth: 1))
             .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 4)
         }.buttonStyle(.plain).foregroundStyle(ink).interactive()
@@ -484,9 +504,15 @@ struct ClotheslineView: View {
             .accessibilityValue(line.isPinned ? "已开启" : "已关闭")
         }.buttonStyle(.plain).font(.system(size: AppTypeScale.small, weight: .medium))
             .padding(.horizontal, 14).padding(.vertical, 8)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 20))
+            .background {
+                if style == .looseleaf {
+                    Color.clear.paperSurface(style.canvas, radius: 20)
+                } else {
+                    RoundedRectangle(cornerRadius: 20).fill(.regularMaterial)
+                }
+            }
             .overlay(RoundedRectangle(cornerRadius: 20).stroke(inkBorder, lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 3)
+            .shadow(color: .black.opacity(style == .looseleaf ? 0 : 0.12), radius: 8, x: 0, y: 3)
             .interactive()
     }
 
@@ -556,6 +582,7 @@ private struct NoteSwing: GeometryEffect {
 }
 
 struct HangingNote: View {
+    @Environment(\.paperStyle) private var style
     let idea: Idea
     var copied: Bool
     var edit: () -> Void
@@ -566,7 +593,14 @@ struct HangingNote: View {
     @State private var arrived = false
     var body: some View {
         VStack(spacing: -11) {
-            RoundedRectangle(cornerRadius: 3).fill(LinearGradient(colors: [Color(red: 0.66, green: 0.42, blue: 0.23), Color(red: 0.88, green: 0.70, blue: 0.45), Color(red: 0.66, green: 0.42, blue: 0.23)], startPoint: .leading, endPoint: .trailing))
+            Group {
+                if style == .looseleaf {
+                    RoundedRectangle(cornerRadius: 3).fill(style.canvas)
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(ink, lineWidth: 1.5))
+                } else {
+                    RoundedRectangle(cornerRadius: 3).fill(LinearGradient(colors: [Color(red: 0.66, green: 0.42, blue: 0.23), Color(red: 0.88, green: 0.70, blue: 0.45), Color(red: 0.66, green: 0.42, blue: 0.23)], startPoint: .leading, endPoint: .trailing))
+                }
+            }
                 .frame(width: 11, height: 29).overlay(Rectangle().fill(.black.opacity(0.25)).frame(width: 9, height: 2)).shadow(radius: 1, y: 1).zIndex(2)
             VStack(alignment: .leading, spacing: 10) {
                 HStack(alignment: .firstTextBaseline) {
@@ -610,10 +644,9 @@ struct HangingNote: View {
             }
             .padding(14)
             .frame(width: 184, height: 171)
-            .background(noteColor(idea.color), in: RoundedRectangle(cornerRadius: radiusCard))
-            .overlay(RoundedRectangle(cornerRadius: radiusCard).stroke(inkBorder, lineWidth: 1))
-            .shadow(color: .black.opacity(0.08), radius: 2, x: 0, y: 1) // 接触阴影
-            .shadow(color: .black.opacity(hover ? 0.20 : 0.12), radius: hover ? 12 : 5, x: 0, y: hover ? 6 : 3) // 扩散环境光阴影
+            .paperSurface(style.note(idea.color))
+            .shadow(color: .black.opacity(style == .looseleaf ? 0 : 0.08), radius: 2, x: 0, y: 1) // 接触阴影
+            .shadow(color: .black.opacity(style == .looseleaf ? 0 : (hover ? 0.20 : 0.12)), radius: hover ? 12 : 5, x: 0, y: hover ? 6 : 3) // 扩散环境光阴影
             .contentShape(Rectangle())
             .onTapGesture(perform: edit)
             .interactive()
@@ -628,6 +661,7 @@ struct HangingNote: View {
 }
 
 struct LibraryNoteCard: View {
+    @Environment(\.paperStyle) private var style
     let idea: Idea
     var edit: () -> Void
     var toggleArchive: () -> Void
@@ -648,7 +682,7 @@ struct LibraryNoteCard: View {
                         .background(accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 4))
                 }
                 .buttonStyle(.plain)
-                .help(idea.archived ? "恢复挂起至顶部衣杆" : "收纳至归档")
+                .help(idea.archived ? "恢复挂起至衣杆" : "收纳至归档")
             }
 
             Text(idea.text)
@@ -670,9 +704,8 @@ struct LibraryNoteCard: View {
             }
         }
         .padding(18)
-        .background(noteColor(idea.color), in: RoundedRectangle(cornerRadius: radiusCard))
-        .overlay(RoundedRectangle(cornerRadius: radiusCard).stroke(inkBorder, lineWidth: 1))
-        .shadow(color: .black.opacity(hover ? 0.12 : 0.04), radius: hover ? 6 : 2, x: 0, y: hover ? 3 : 1)
+        .paperSurface(style.note(idea.color))
+        .shadow(color: .black.opacity(style == .looseleaf ? 0 : (hover ? 0.12 : 0.04)), radius: hover ? 6 : 2, x: 0, y: hover ? 3 : 1)
         .contentShape(Rectangle())
         .onTapGesture(perform: edit)
         .onHover { hover = $0 }
@@ -681,12 +714,23 @@ struct LibraryNoteCard: View {
 }
 
 struct LibraryView: View {
+    @Environment(\.paperStyle) private var style
     @ObservedObject var store: IdeaStore
     var compose: () -> Void
     var edit: (Idea) -> Void
     var export: () -> Void
     @State private var query = ""
     @State private var archived = false
+    private func categoryButton(_ title: String, archived value: Bool) -> some View {
+        Button { archived = value } label: {
+            Text(title)
+                .font(.system(size: AppTypeScale.small, weight: archived == value ? .semibold : .regular))
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .paperSurface(archived == value ? style.sage : style.canvas, raised: archived == value)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(archived == value ? .isSelected : [])
+    }
     private var ideas: [Idea] { store.state.ideas.filter { $0.archived == archived && (query.isEmpty || $0.text.localizedCaseInsensitiveContains(query)) } }
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -708,8 +752,8 @@ struct LibraryView: View {
                     Label("新建选题  \(AppShortcut.newIdea.label)", systemImage: "plus")
                         .font(.system(size: AppTypeScale.small, weight: .semibold))
                         .padding(.horizontal, 14).padding(.vertical, 9)
-                        .background(ink, in: RoundedRectangle(cornerRadius: radiusCard * 2))
-                        .foregroundStyle(.white)
+                        .paperSurface(style == .looseleaf ? style.sage : ink, radius: radiusCard * 2)
+                        .foregroundStyle(style == .looseleaf ? ink : .white)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut("n", modifiers: [.control, .option])
@@ -717,12 +761,21 @@ struct LibraryView: View {
 
             // Tabs & Search Bar
             HStack(spacing: 16) {
-                Picker("分类", selection: $archived) {
-                    Text("衣杆上 · \(store.active.count)").tag(false)
-                    Text("已收纳 · \(store.state.ideas.count - store.active.count)").tag(true)
+                if style == .looseleaf {
+                    HStack(spacing: 10) {
+                        categoryButton("衣杆上 · \(store.active.count)", archived: false)
+                        categoryButton("已收纳 · \(store.state.ideas.count - store.active.count)", archived: true)
+                    }
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("分类")
+                } else {
+                    Picker("分类", selection: $archived) {
+                        Text("衣杆上 · \(store.active.count)").tag(false)
+                        Text("已收纳 · \(store.state.ideas.count - store.active.count)").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 230)
                 }
-                .pickerStyle(.segmented)
-                .frame(width: 230)
 
                 Spacer()
 
@@ -744,8 +797,7 @@ struct LibraryView: View {
                     }
                 }
                 .padding(.horizontal, 10).padding(.vertical, 6)
-                .background(Color.white.opacity(0.65), in: RoundedRectangle(cornerRadius: 8))
-                .overlay(RoundedRectangle(cornerRadius: 8).stroke(inkBorder, lineWidth: 1))
+                .paperSurface(Color.white.opacity(0.65), radius: 8, raised: false)
             }
 
             // Card Grid or Empty State
@@ -789,7 +841,7 @@ struct LibraryView: View {
             .foregroundStyle(inkSecondary)
         }
         .padding(32)
-        .background(paper)
+        .background(style.canvas)
         .foregroundStyle(ink)
         .frame(minWidth: 680, minHeight: 520)
         .preferredColorScheme(.light)
