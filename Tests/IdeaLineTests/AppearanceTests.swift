@@ -2,6 +2,15 @@ import XCTest
 @testable import IdeaLine
 
 final class AppearanceTests: XCTestCase {
+    func testPaperTextureResourcesDecodeAtOriginalResolution() {
+        let expected = ["relief": 384, "slip": 256, "fibre": 480, "cloud": 240]
+        XCTAssertEqual(Set(PaperTexture.tiles.keys), Set(expected.keys))
+        for (name, size) in expected {
+            XCTAssertEqual(PaperTexture.tiles[name]?.image.width, size, name)
+            XCTAssertEqual(PaperTexture.tiles[name]?.image.height, size, name)
+        }
+    }
+
     func testExistingInstallAndUnknownPreferenceUseClassic() {
         let suite = "AppearanceTests-\(UUID())"
         let defaults = UserDefaults(suiteName: suite)!

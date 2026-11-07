@@ -8,16 +8,35 @@ enum PaperStyle: String, CaseIterable {
     static func saved(in defaults: UserDefaults = .standard) -> Self {
         defaults.string(forKey: defaultsKey).flatMap(Self.init(rawValue:)) ?? .classic
     }
-    var canvas: Color { self == .classic ? paper : Color(red: 0.97, green: 0.95, blue: 0.89) }
-    var sage: Color { Color(red: 0.62, green: 0.72, blue: 0.68) }
+    var canvas: Color { self == .classic ? paper : NotebookPalette.sheet }
+    var sage: Color { self == .classic ? Color(red: 0.62, green: 0.72, blue: 0.68) : NotebookPalette.desk }
+    var foreground: Color { self == .classic ? ink : NotebookPalette.ink }
+    var secondaryInk: Color { self == .classic ? inkSecondary : NotebookPalette.inkMuted }
+    var mutedInk: Color { self == .classic ? inkMuted : NotebookPalette.inkMuted }
+    var borderInk: Color { self == .classic ? inkBorder : NotebookPalette.ink.opacity(0.10) }
+    var toolbar: Color { self == .classic ? paper : NotebookPalette.slip }
     func note(_ index: Int) -> Color {
         guard self == .looseleaf else { return noteColor(index) }
-        let colors = [Color(red: 0.96, green: 0.86, blue: 0.58),
-                      Color(red: 0.76, green: 0.84, blue: 0.72),
-                      Color(red: 0.75, green: 0.84, blue: 0.88),
-                      Color(red: 0.93, green: 0.75, blue: 0.67)]
+        // Index 0 is the existing default. Keep the stored model and classic colors intact.
+        // Green/blue/pink: official Notebook colors lightened to 200 (--cap 0 --strength 0).
+        let colors = [NotebookPalette.sheet,
+                      Color(red: 236 / 255.0, green: 245 / 255.0, blue: 221 / 255.0),
+                      Color(red: 226 / 255.0, green: 238 / 255.0, blue: 248 / 255.0),
+                      Color(red: 251 / 255.0, green: 225 / 255.0, blue: 222 / 255.0)]
         return colors[max(0, min(index, colors.count - 1))]
     }
+
+}
+
+/// Looseleaf Notebook palette, shared with the clothesline-ui skill.
+enum NotebookPalette {
+    static let sheet = Color(red: 248 / 255.0, green: 245 / 255.0, blue: 238 / 255.0)
+    static let desk = Color(red: 168 / 255.0, green: 200 / 255.0, blue: 187 / 255.0)
+    static let slip = Color(red: 251 / 255.0, green: 248 / 255.0, blue: 241 / 255.0)
+    static let ink = Color(red: 42 / 255.0, green: 36 / 255.0, blue: 32 / 255.0)
+    static let inkMuted = Color(red: 74 / 255.0, green: 67 / 255.0, blue: 60 / 255.0)
+    static let shadow = Color(red: 58 / 255.0, green: 44 / 255.0, blue: 30 / 255.0)
+    static let marker = Color(red: 223 / 255.0, green: 107 / 255.0, blue: 60 / 255.0)
 }
 
 final class AppearanceState: ObservableObject {
@@ -76,13 +95,15 @@ struct PaperSurface: ViewModifier {
     var fill: Color
     var radius: CGFloat = radiusCard
     var raised = true
+    var stock: PaperStock = .paper
     func body(content: Content) -> some View {
         content.background {
             if style == .looseleaf {
                 ZStack {
-                    if raised { DrawnPaper().fill(ink).offset(x: 3, y: 4) }
+                    if raised { DrawnPaper().fill(NotebookPalette.shadow).offset(x: 3, y: 4) }
                     DrawnPaper().fill(fill)
-                    DrawnPaper().stroke(ink, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                    PaperTexture(stock: stock).clipShape(DrawnPaper())
+                    DrawnPaper().stroke(NotebookPalette.ink, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
                 }
             } else {
                 RoundedRectangle(cornerRadius: radius).fill(fill)
@@ -93,7 +114,7 @@ struct PaperSurface: ViewModifier {
 }
 
 extension View {
-    func paperSurface(_ fill: Color, radius: CGFloat = radiusCard, raised: Bool = true) -> some View {
-        modifier(PaperSurface(fill: fill, radius: radius, raised: raised))
+    func paperSurface(_ fill: Color, radius: CGFloat = radiusCard, raised: Bool = true, stock: PaperStock = .paper) -> some View {
+        modifier(PaperSurface(fill: fill, radius: radius, raised: raised, stock: stock))
     }
 }

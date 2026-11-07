@@ -46,6 +46,7 @@ final class WritingTextView: NSTextView {
     }
 }
 struct WritingEditor: NSViewRepresentable {
+    @Environment(\.paperStyle) private var style
     @Binding var text: String
     var submit: () -> Void
     var dismiss: () -> Void
@@ -55,7 +56,7 @@ struct WritingEditor: NSViewRepresentable {
         let view = WritingTextView()
         view.isRichText = false; view.isAutomaticQuoteSubstitutionEnabled = false
         view.drawsBackground = false; view.font = NSFont.systemFont(ofSize: 20, weight: .regular)
-        view.textColor = NSColor(ink); view.textContainerInset = NSSize(width: 0, height: 8)
+        view.textColor = NSColor(style.foreground); view.textContainerInset = NSSize(width: 0, height: 8)
         view.isVerticallyResizable = true; view.isHorizontallyResizable = false
         view.autoresizingMask = [.width]; view.textContainer?.widthTracksTextView = true
         view.textContainer?.containerSize = NSSize(width: 510, height: CGFloat.greatestFiniteMagnitude)
@@ -69,6 +70,7 @@ struct WritingEditor: NSViewRepresentable {
         if let view = scroll.documentView as? WritingTextView {
             if view.string != text && !view.hasMarkedText() { view.string = text }
             view.submit = submit; view.dismiss = dismiss
+            view.textColor = NSColor(style.foreground)
         }
     }
     class Coordinator: NSObject, NSTextViewDelegate {
@@ -99,9 +101,9 @@ struct ComposerView: View {
                 Button(action: close) {
                     Image(systemName: "xmark")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(inkSecondary)
+                        .foregroundStyle(style.secondaryInk)
                         .frame(width: 24, height: 24)
-                        .background(inkBorder, in: Circle())
+                        .background(style.borderInk, in: Circle())
                 }
                 .buttonStyle(.plain)
                 .help("关闭并保留草稿 · Esc")
@@ -112,7 +114,7 @@ struct ComposerView: View {
             ZStack(alignment: .topLeading) {
                 if draft.text.isEmpty {
                     Text("记录新选题或碎片灵感…")
-                        .foregroundStyle(inkMuted)
+                        .foregroundStyle(style.mutedInk)
                         .font(.system(size: 20))
                         .padding(.top, 8)
                         .padding(.leading, 5)
@@ -126,7 +128,7 @@ struct ComposerView: View {
                 Text(error).font(.caption).foregroundStyle(.red).padding(.vertical, 4)
             }
 
-            Rectangle().fill(inkBorder).frame(height: 1).padding(.vertical, 16)
+            Rectangle().fill(style.borderInk).frame(height: 1).padding(.vertical, 16)
 
             // Bottom bar
             HStack(alignment: .center, spacing: 10) {
@@ -135,20 +137,20 @@ struct ComposerView: View {
                         ZStack {
                             Circle().fill(style.note(i)).frame(width: 22, height: 22)
                             if draft.color == i {
-                                Circle().stroke(ink, lineWidth: 2).frame(width: 22, height: 22)
-                                Circle().fill(ink).frame(width: 6, height: 6)
+                                Circle().stroke(style.foreground, lineWidth: 2).frame(width: 22, height: 22)
+                                Circle().fill(style.foreground).frame(width: 6, height: 6)
                             } else {
-                                Circle().stroke(inkBorder, lineWidth: 1).frame(width: 22, height: 22)
+                                Circle().stroke(style.borderInk, lineWidth: 1).frame(width: 22, height: 22)
                             }
                         }
                     }
                     .buttonStyle(.plain)
-                    .help(["黄色纸张", "绿色纸张", "蓝色纸张", "粉色纸张"][i])
+                    .help([style == .looseleaf ? "暖米白纸张" : "黄色纸张", "绿色纸张", "蓝色纸张", "粉色纸张"][i])
                 }
 
                 Text("\(draft.text.count) 字")
                     .font(.system(size: AppTypeScale.caption, design: .monospaced))
-                    .foregroundStyle(inkSecondary)
+                    .foregroundStyle(style.secondaryInk)
                     .padding(.leading, 8)
 
                 Spacer()
@@ -159,8 +161,8 @@ struct ComposerView: View {
                         Text("⌘↵").font(.system(size: AppTypeScale.caption, design: .monospaced)).opacity(0.7)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 9)
-                    .foregroundStyle(style == .looseleaf ? ink : .white)
-                    .paperSurface(style == .looseleaf ? style.sage : ink, radius: radiusCard * 2)
+                    .foregroundStyle(style == .looseleaf ? style.foreground : .white)
+                    .paperSurface(style == .looseleaf ? NotebookPalette.marker : style.foreground, radius: radiusCard * 2)
                 }
                 .buttonStyle(.plain)
                 .disabled(draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -169,22 +171,24 @@ struct ComposerView: View {
             HStack {
                 Text("按 ⌘↵ 保存至衣杆，Esc 保留草稿退出")
                     .font(.system(size: AppTypeScale.caption))
-                    .foregroundStyle(inkSecondary)
+                    .foregroundStyle(style.secondaryInk)
                 Spacer()
             }
             .padding(.top, 14)
         }
         .padding(28)
-        .background(style.canvas)
+        .background {
+            style.canvas.overlay { if style == .looseleaf { PaperTexture() } }
+        }
         .clipShape(RoundedRectangle(cornerRadius: radiusWindow))
         .overlay {
             if style == .looseleaf {
-                DrawnPaper().stroke(ink, lineWidth: 1.6)
+                DrawnPaper().stroke(style.foreground, lineWidth: 1.6)
             } else {
-                RoundedRectangle(cornerRadius: radiusWindow).stroke(inkBorder, lineWidth: 1)
+                RoundedRectangle(cornerRadius: radiusWindow).stroke(style.borderInk, lineWidth: 1)
             }
         }
-        .foregroundStyle(ink)
+        .foregroundStyle(style.foreground)
         .onExitCommand(perform: close)
         .onChange(of: draft) { _, value in store.draft(value) }
     }
@@ -269,7 +273,7 @@ private struct ClotheslineBackdrop: View {
         Group {
             if style == .looseleaf {
                 DrawnPaper().fill(style.sage)
-                    .overlay(DrawnPaper().stroke(ink, lineWidth: 1.6))
+                    .overlay(DrawnPaper().stroke(style.foreground, lineWidth: 1.6))
                     .padding(4)
             } else {
                 classicBackdrop
@@ -385,12 +389,12 @@ struct ClotheslineView: View {
             VStack(spacing: 10) {
                 Image(systemName: "wind").font(.system(size: 26)).foregroundStyle(accent)
                 Text("暂无挂起选题").font(.system(size: AppTypeScale.subhead, weight: .medium, design: .serif))
-                Text("\(AppShortcut.newIdea.label)   新建选题").font(.system(size: AppTypeScale.caption, design: .monospaced)).foregroundStyle(inkSecondary)
+                Text("\(AppShortcut.newIdea.label)   新建选题").font(.system(size: AppTypeScale.caption, design: .monospaced)).foregroundStyle(style.secondaryInk)
             }
             .padding(24).paperSurface(style.canvas, radius: 12)
-            .overlay(RoundedRectangle(cornerRadius: 12).stroke(inkBorder, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 12).stroke(style.borderInk, lineWidth: 1))
             .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 4)
-        }.buttonStyle(.plain).foregroundStyle(ink).interactive()
+        }.buttonStyle(.plain).foregroundStyle(style.foreground).interactive()
     }
 
     private func sideRope(count: Int) -> some View {
@@ -467,18 +471,18 @@ struct ClotheslineView: View {
                     Button(action: compose) {
                         Label("新建选题", systemImage: "plus")
                             .padding(.horizontal, 10).padding(.vertical, 5)
-                            .background(ink, in: Capsule()).foregroundStyle(.white)
+                            .background(style.foreground, in: Capsule()).foregroundStyle(.white)
                     }
                     Divider().frame(height: 12)
                 }
                 Button(action: library) {
                     Label(isEmpty ? "全部选题" : "全部 \(store.active.count) 条", systemImage: "tray.full")
-                        .foregroundStyle(ink)
+                        .foregroundStyle(style.foreground)
                 }
             }
             if !line.position.isVertical && store.active.count > 1 && line.capacity > 1 {
                 Text("拖动便签排序")
-                    .font(.system(size: AppTypeScale.caption)).foregroundStyle(inkSecondary)
+                    .font(.system(size: AppTypeScale.caption)).foregroundStyle(style.secondaryInk)
             }
             if count > 1 {
                 HStack(spacing: 12) {
@@ -486,7 +490,7 @@ struct ClotheslineView: View {
                         Image(systemName: line.position.isVertical ? "chevron.up" : "chevron.left")
                     }.disabled(page == 0).help("上一页")
                     Text("\(page + 1) / \(count)").monospacedDigit()
-                        .font(.system(size: AppTypeScale.caption)).foregroundStyle(inkSecondary)
+                        .font(.system(size: AppTypeScale.caption)).foregroundStyle(style.secondaryInk)
                     Button { line.page = min(count - 1, page + 1) } label: {
                         Image(systemName: line.position.isVertical ? "chevron.down" : "chevron.right")
                     }.disabled(page == count - 1).help("下一页")
@@ -496,8 +500,8 @@ struct ClotheslineView: View {
                 Label(line.isPinned ? "已固定" : "固定", systemImage: line.isPinned ? "pin.fill" : "pin")
                     .frame(minWidth: 62)
                     .padding(.horizontal, 8).padding(.vertical, 5)
-                    .foregroundStyle(line.isPinned ? Color.white : inkSecondary)
-                    .background(line.isPinned ? ink : Color.clear, in: Capsule())
+                    .foregroundStyle(line.isPinned ? Color.white : style.secondaryInk)
+                    .background(line.isPinned ? style.foreground : Color.clear, in: Capsule())
             }
             .help(line.isPinned ? "取消固定，鼠标移开后自动收起" : "固定衣杆，保持展开")
             .accessibilityLabel("固定衣杆")
@@ -506,12 +510,12 @@ struct ClotheslineView: View {
             .padding(.horizontal, 14).padding(.vertical, 8)
             .background {
                 if style == .looseleaf {
-                    Color.clear.paperSurface(style.canvas, radius: 20)
+                    Color.clear.paperSurface(style.toolbar, radius: 20, stock: .slip)
                 } else {
                     RoundedRectangle(cornerRadius: 20).fill(.regularMaterial)
                 }
             }
-            .overlay(RoundedRectangle(cornerRadius: 20).stroke(inkBorder, lineWidth: 0.5))
+            .overlay(RoundedRectangle(cornerRadius: 20).stroke(style.borderInk, lineWidth: 0.5))
             .shadow(color: .black.opacity(style == .looseleaf ? 0 : 0.12), radius: 8, x: 0, y: 3)
             .interactive()
     }
@@ -596,7 +600,7 @@ struct HangingNote: View {
             Group {
                 if style == .looseleaf {
                     RoundedRectangle(cornerRadius: 3).fill(style.canvas)
-                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(ink, lineWidth: 1.5))
+                        .overlay(RoundedRectangle(cornerRadius: 3).stroke(style.foreground, lineWidth: 1.5))
                 } else {
                     RoundedRectangle(cornerRadius: 3).fill(LinearGradient(colors: [Color(red: 0.66, green: 0.42, blue: 0.23), Color(red: 0.88, green: 0.70, blue: 0.45), Color(red: 0.66, green: 0.42, blue: 0.23)], startPoint: .leading, endPoint: .trailing))
                 }
@@ -608,7 +612,7 @@ struct HangingNote: View {
                     Spacer()
                 }
                 .font(.system(size: AppTypeScale.caption, weight: .medium, design: .monospaced))
-                .foregroundStyle(inkSecondary)
+                .foregroundStyle(style.secondaryInk)
 
                 Text(idea.text)
                     .font(.system(size: AppTypeScale.body, weight: .medium, design: .serif))
@@ -619,12 +623,12 @@ struct HangingNote: View {
                 HStack(alignment: .center) {
                     Text(copied ? "已复制 ✓" : "点击编辑")
                         .font(.system(size: AppTypeScale.caption))
-                        .foregroundStyle(copied ? accent : inkSecondary)
+                        .foregroundStyle(copied ? accent : style.secondaryInk)
                     Spacer()
                     Button(action: copy) {
                         Image(systemName: "doc.on.doc")
                             .font(.system(size: AppTypeScale.caption))
-                            .foregroundStyle(inkSecondary)
+                            .foregroundStyle(style.secondaryInk)
                             .frame(width: 24, height: 24)
                             .contentShape(Rectangle())
                     }
@@ -634,7 +638,7 @@ struct HangingNote: View {
                     Button(action: archive) {
                         Image(systemName: "archivebox")
                             .font(.system(size: AppTypeScale.caption))
-                            .foregroundStyle(inkSecondary)
+                            .foregroundStyle(style.secondaryInk)
                             .frame(width: 24, height: 24)
                             .contentShape(Rectangle())
                     }
@@ -651,7 +655,7 @@ struct HangingNote: View {
             .onTapGesture(perform: edit)
             .interactive()
             .contextMenu { Button("编辑", action: edit); Button("复制", action: copy); Button("收纳", action: archive) }
-        }.foregroundStyle(ink).rotationEffect(.degrees(arrived ? (hover ? 0 : tilt) : -12), anchor: .top)
+        }.foregroundStyle(style.foreground).rotationEffect(.degrees(arrived ? (hover ? 0 : tilt) : -12), anchor: .top)
             .modifier(Swaying(motion: motion, calm: hover ? 0 : 1))
             .scaleEffect(hover ? 1.035 : 1, anchor: .top).onHover { hover = $0 }
             .animation(.spring(response: 0.5, dampingFraction: 0.45), value: hover)
@@ -672,7 +676,7 @@ struct LibraryNoteCard: View {
             HStack(alignment: .firstTextBaseline) {
                 Text(idea.createdAt, format: .dateTime.year().month().day())
                     .font(.system(size: AppTypeScale.caption, design: .monospaced))
-                    .foregroundStyle(inkSecondary)
+                    .foregroundStyle(style.secondaryInk)
                 Spacer()
                 Button(action: toggleArchive) {
                     Text(idea.archived ? "恢复挂起" : "收纳")
@@ -694,12 +698,12 @@ struct LibraryNoteCard: View {
             HStack {
                 Text("点击编辑")
                     .font(.system(size: AppTypeScale.caption))
-                    .foregroundStyle(inkSecondary)
+                    .foregroundStyle(style.secondaryInk)
                     .opacity(hover ? 1 : 0.6)
                 Spacer()
                 Image(systemName: "pencil")
                     .font(.system(size: AppTypeScale.caption))
-                    .foregroundStyle(inkSecondary)
+                    .foregroundStyle(style.secondaryInk)
                     .opacity(hover ? 1 : 0)
             }
         }
@@ -745,15 +749,15 @@ struct LibraryView: View {
                         .font(.system(size: AppTypeScale.display, weight: .medium, design: .serif))
                     Text(archived ? "已收纳选题列表与归档管理。" : "全部选题列表与归档管理。")
                         .font(.system(size: AppTypeScale.small))
-                        .foregroundStyle(inkSecondary)
+                        .foregroundStyle(style.secondaryInk)
                 }
                 Spacer()
                 Button(action: compose) {
                     Label("新建选题  \(AppShortcut.newIdea.label)", systemImage: "plus")
                         .font(.system(size: AppTypeScale.small, weight: .semibold))
                         .padding(.horizontal, 14).padding(.vertical, 9)
-                        .paperSurface(style == .looseleaf ? style.sage : ink, radius: radiusCard * 2)
-                        .foregroundStyle(style == .looseleaf ? ink : .white)
+                        .paperSurface(style == .looseleaf ? NotebookPalette.marker : style.foreground, radius: radiusCard * 2)
+                        .foregroundStyle(style == .looseleaf ? style.foreground : .white)
                 }
                 .buttonStyle(.plain)
                 .keyboardShortcut("n", modifiers: [.control, .option])
@@ -782,7 +786,7 @@ struct LibraryView: View {
                 HStack(spacing: 6) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: AppTypeScale.caption))
-                        .foregroundStyle(inkSecondary)
+                        .foregroundStyle(style.secondaryInk)
                     TextField(archived ? "搜索已收纳…" : "搜索选题…", text: $query)
                         .textFieldStyle(.plain)
                         .font(.system(size: AppTypeScale.small))
@@ -791,7 +795,7 @@ struct LibraryView: View {
                         Button { query = "" } label: {
                             Image(systemName: "xmark.circle.fill")
                                 .font(.system(size: AppTypeScale.caption))
-                                .foregroundStyle(inkMuted)
+                                .foregroundStyle(style.mutedInk)
                         }
                         .buttonStyle(.plain)
                     }
@@ -811,7 +815,7 @@ struct LibraryView: View {
                             .font(.system(size: AppTypeScale.subhead, weight: .medium, design: .serif))
                         Text(query.isEmpty ? (archived ? "在选题卡片上点击「收纳」可将选题移至此处。" : "按 \(AppShortcut.newIdea.label) 新建选题，按 ⌘↵ 保存至衣杆。") : "可更换关键词重新搜索。")
                             .font(.system(size: AppTypeScale.caption))
-                            .foregroundStyle(inkSecondary)
+                            .foregroundStyle(style.secondaryInk)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.top, 80)
@@ -838,11 +842,13 @@ struct LibraryView: View {
                 Button("导出 Markdown", action: export).buttonStyle(.plain).foregroundStyle(accent)
             }
             .font(.system(size: AppTypeScale.caption))
-            .foregroundStyle(inkSecondary)
+            .foregroundStyle(style.secondaryInk)
         }
         .padding(32)
-        .background(style.canvas)
-        .foregroundStyle(ink)
+        .background {
+            style.canvas.overlay { if style == .looseleaf { PaperTexture() } }
+        }
+        .foregroundStyle(style.foreground)
         .frame(minWidth: 680, minHeight: 520)
         .preferredColorScheme(.light)
     }
