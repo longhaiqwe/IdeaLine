@@ -31,8 +31,36 @@ let radiusCard: CGFloat = 4
 let radiusWindow: CGFloat = 14
 
 final class WritingTextView: NSTextView {
+    static let placeholder = "记录新选题或碎片灵感…"
+    var placeholderColor: NSColor = .placeholderTextColor {
+        didSet { if placeholderColor != oldValue { needsDisplay = true } }
+    }
     var submit: (() -> Void)?
     var dismiss: (() -> Void)?
+
+    override var string: String {
+        didSet { needsDisplay = true }
+    }
+
+    override func didChangeText() {
+        super.didChangeText()
+        needsDisplay = true
+    }
+
+    override func setMarkedText(_ string: Any, selectedRange: NSRange, replacementRange: NSRange) {
+        super.setMarkedText(string, selectedRange: selectedRange, replacementRange: replacementRange)
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        // The input method can show marked text before the draft binding changes.
+        guard string.isEmpty, !hasMarkedText(), let font else { return }
+        var origin = textContainerOrigin
+        origin.x += textContainer?.lineFragmentPadding ?? 0
+        Self.placeholder.draw(at: origin, withAttributes: [.font: font, .foregroundColor: placeholderColor])
+    }
+
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         if event.keyCode == 36 && event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command {
             if hasMarkedText() { return super.performKeyEquivalent(with: event) }
@@ -57,6 +85,8 @@ struct WritingEditor: NSViewRepresentable {
         view.isRichText = false; view.isAutomaticQuoteSubstitutionEnabled = false
         view.drawsBackground = false; view.font = NSFont.systemFont(ofSize: 20, weight: .regular)
         view.textColor = NSColor(style.foreground); view.textContainerInset = NSSize(width: 0, height: 8)
+        view.placeholderColor = NSColor(style.mutedInk)
+        view.setAccessibilityPlaceholderValue(WritingTextView.placeholder)
         view.isVerticallyResizable = true; view.isHorizontallyResizable = false
         view.autoresizingMask = [.width]; view.textContainer?.widthTracksTextView = true
         view.textContainer?.containerSize = NSSize(width: 510, height: CGFloat.greatestFiniteMagnitude)
@@ -71,6 +101,7 @@ struct WritingEditor: NSViewRepresentable {
             if view.string != text && !view.hasMarkedText() { view.string = text }
             view.submit = submit; view.dismiss = dismiss
             view.textColor = NSColor(style.foreground)
+            view.placeholderColor = NSColor(style.mutedInk)
         }
     }
     class Coordinator: NSObject, NSTextViewDelegate {
@@ -111,18 +142,8 @@ struct ComposerView: View {
             .padding(.bottom, 20)
 
             // Editor
-            ZStack(alignment: .topLeading) {
-                if draft.text.isEmpty {
-                    Text("记录新选题或碎片灵感…")
-                        .foregroundStyle(style.mutedInk)
-                        .font(.system(size: 20))
-                        .padding(.top, 8)
-                        .padding(.leading, 5)
-                        .allowsHitTesting(false)
-                }
-                WritingEditor(text: $draft.text, submit: submit, dismiss: close)
-            }
-            .frame(maxHeight: .infinity)
+            WritingEditor(text: $draft.text, submit: submit, dismiss: close)
+                .frame(maxHeight: .infinity)
 
             if let error = store.error {
                 Text(error).font(.caption).foregroundStyle(.red).padding(.vertical, 4)
